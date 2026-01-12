@@ -17,7 +17,7 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
   const navItems = [
     { id: 'home', label: 'Home', icon: '🏠' },
-    { id: 'explore', label: 'Explore', icon: '🔍' },
+    { id: 'explore', label: 'Messages', icon: '💬' },
     { id: 'create', label: 'Create', icon: '➕' },
     { id: 'achievements', label: 'Achievements', icon: '🏆' },
     { id: 'profile', label: 'Profile', icon: '👤' },
@@ -31,7 +31,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
       return;
     }
     
-    if (tabId !== 'home') {
+    if (tabId === 'achievements' || tabId === 'profile') {
       Alert.alert('Coming Soon', `${tabId.charAt(0).toUpperCase() + tabId.slice(1)} feature in development!`);
       return;
     }

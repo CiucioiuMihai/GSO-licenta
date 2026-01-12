@@ -4,14 +4,22 @@ import { auth } from '@/services/firebase';
 import LoginScreen from '@/screens/LoginScreen';
 import RegisterScreen from '@/screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
+import FriendsScreen from '../screens/FriendsScreen';
+import DirectMessagesScreen from '../screens/DirectMessagesScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
-type Screen = 'login' | 'register' | 'home';
+type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages';
+
+interface MessageScreenParams {
+  conversationId: string;
+  otherUserId: string;
+}
 
 const AuthNavigator: React.FC = () => {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [messageParams, setMessageParams] = useState<MessageScreenParams | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -41,6 +49,28 @@ const AuthNavigator: React.FC = () => {
     // Firebase auth state listener will handle navigation
   };
 
+  const handleNavigateToFriends = () => {
+    setCurrentScreen('friends');
+  };
+
+  const handleNavigateToHome = () => {
+    setCurrentScreen('home');
+  };
+
+  const handleStartChat = (otherUserId: string, conversationId: string) => {
+    setMessageParams({ conversationId, otherUserId });
+    setCurrentScreen('messages');
+  };
+
+  const handleBackFromMessages = () => {
+    setMessageParams(null);
+    setCurrentScreen('friends');
+  };
+
+  const handleBackFromFriends = () => {
+    setCurrentScreen('home');
+  };
+
   // Show loading screen while checking auth state
   if (authState === 'loading') {
     return null; // You can add a loading spinner here later
@@ -48,7 +78,29 @@ const AuthNavigator: React.FC = () => {
 
   // Show authenticated screens
   if (authState === 'authenticated') {
-    return <HomeScreen user={user} />;
+    switch (currentScreen) {
+      case 'home':
+        return <HomeScreen user={user} onNavigateToFriends={handleNavigateToFriends} />;
+      case 'friends':
+        return (
+          <FriendsScreen
+            onStartChat={handleStartChat}
+            onBack={handleBackFromFriends}
+          />
+        );
+      case 'messages':
+        return messageParams ? (
+          <DirectMessagesScreen
+            conversationId={messageParams.conversationId}
+            otherUserId={messageParams.otherUserId}
+            onBack={handleBackFromMessages}
+          />
+        ) : (
+          <HomeScreen user={user} onNavigateToFriends={handleNavigateToFriends} />
+        );
+      default:
+        return <HomeScreen user={user} onNavigateToFriends={handleNavigateToFriends} />;
+    }
   }
 
   // Show authentication screens

@@ -16,9 +16,10 @@ import Navbar from '../components/Navbar';
 
 interface HomeScreenProps {
   user: FirebaseUser | null;
+  onNavigateToFriends: () => void;
 }
 
-const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
+const HomeScreen: React.FC<HomeScreenProps> = ({ user, onNavigateToFriends }) => {
   const [activeTab, setActiveTab] = useState('home');
 
   const handleLogout = async () => {
@@ -32,6 +33,10 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
 
   const handleTabPress = (tab: string) => {
     setActiveTab(tab);
+    if (tab === 'explore') {
+      // Navigate to friends when explore is pressed for now
+      onNavigateToFriends();
+    }
   };
 
   const isWeb = Platform.OS === 'web';
@@ -93,7 +98,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                     <Text style={styles.actionSubtitle}>Share your thoughts</Text>
                   </TouchableOpacity>
                   
-                  <TouchableOpacity style={styles.actionCard} onPress={() => Alert.alert('Coming Soon', 'Find new friends!')}>
+                  <TouchableOpacity style={styles.actionCard} onPress={onNavigateToFriends}>
                     <Text style={styles.actionIcon}>👥</Text>
                     <Text style={styles.actionTitle}>Find Friends</Text>
                     <Text style={styles.actionSubtitle}>Connect with others</Text>
