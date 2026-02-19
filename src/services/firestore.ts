@@ -29,8 +29,6 @@ import {
   Conversation, 
   Report, 
   Achievement,
-  Challenge,
-  Tournament,
   ActivityFeedItem,
   LeaderboardUser,
   XPTransaction,

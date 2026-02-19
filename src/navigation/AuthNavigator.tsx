@@ -6,9 +6,11 @@ import RegisterScreen from '@/screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import DirectMessagesScreen from '../screens/DirectMessagesScreen';
+import PostsFeedScreen from '../screens/PostsFeedScreen';
+import CreatePostScreen from '../screens/CreatePostScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
-type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages';
+type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'posts-feed' | 'create-post';
 
 interface MessageScreenParams {
   conversationId: string;
@@ -57,6 +59,22 @@ const AuthNavigator: React.FC = () => {
     setCurrentScreen('home');
   };
 
+  const handleNavigateToPostsFeed = () => {
+    setCurrentScreen('posts-feed');
+  };
+
+  const handleNavigateToCreatePost = () => {
+    setCurrentScreen('create-post');
+  };
+
+  const handlePostCreated = () => {
+    setCurrentScreen('posts-feed');
+  };
+
+  const handleBackFromPosts = () => {
+    setCurrentScreen('home');
+  };
+
   const handleStartChat = (otherUserId: string, conversationId: string) => {
     setMessageParams({ conversationId, otherUserId });
     setCurrentScreen('messages');
@@ -80,12 +98,33 @@ const AuthNavigator: React.FC = () => {
   if (authState === 'authenticated') {
     switch (currentScreen) {
       case 'home':
-        return <HomeScreen user={user} onNavigateToFriends={handleNavigateToFriends} />;
+        return (
+          <HomeScreen
+            user={user}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+          />
+        );
       case 'friends':
         return (
           <FriendsScreen
             onStartChat={handleStartChat}
             onBack={handleBackFromFriends}
+          />
+        );
+      case 'posts-feed':
+        return (
+          <PostsFeedScreen
+            onCreatePost={handleNavigateToCreatePost}
+            onBack={handleBackFromPosts}
+          />
+        );
+      case 'create-post':
+        return (
+          <CreatePostScreen
+            onBack={handleBackFromPosts}
+            onPostCreated={handlePostCreated}
           />
         );
       case 'messages':
@@ -96,10 +135,22 @@ const AuthNavigator: React.FC = () => {
             onBack={handleBackFromMessages}
           />
         ) : (
-          <HomeScreen user={user} onNavigateToFriends={handleNavigateToFriends} />
+          <HomeScreen
+            user={user}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+          />
         );
       default:
-        return <HomeScreen user={user} onNavigateToFriends={handleNavigateToFriends} />;
+        return (
+          <HomeScreen
+            user={user}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+          />
+        );
     }
   }
 

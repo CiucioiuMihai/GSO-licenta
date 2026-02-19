@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,20 +7,61 @@ import {
   Alert,
   ScrollView,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/services/firebase';
+import { getUserDataWithCounts } from '@/services/postsService';
+import { User } from '@/types';
 import Navbar from '../components/Navbar';
 
 interface HomeScreenProps {
   user: FirebaseUser | null;
   onNavigateToFriends: () => void;
+  onNavigateToPostsFeed: () => void;
+  onNavigateToCreatePost: () => void;
 }
 
-const HomeScreen: React.FC<HomeScreenProps> = ({ user, onNavigateToFriends }) => {
+const HomeScreen: React.FC<HomeScreenProps> = ({ 
+  user, 
+  onNavigateToFriends, 
+  onNavigateToPostsFeed, 
+  onNavigateToCreatePost 
+}) => {
   const [activeTab, setActiveTab] = useState('home');
+  const [userData, setUserData] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchUserData = useCallback(async () => {
+    if (user?.uid) {
+      try {
+        const userDataWithCounts = await getUserDataWithCounts(user.uid);
+        setUserData(userDataWithCounts);
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await fetchUserData();
+      setLoading(false);
+    };
+
+    loadData();
+  }, [fetchUserData]);
+
+  // Pull to refresh functionality
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchUserData();
+    setRefreshing(false);
+  }, [fetchUserData]);
 
   const handleLogout = async () => {
     try {
@@ -36,7 +77,18 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user, onNavigateToFriends }) =>
     if (tab === 'explore') {
       // Navigate to friends when explore is pressed for now
       onNavigateToFriends();
+    } else if (tab === 'home') {
+      // Refresh data when user returns to home tab
+      onRefresh();
     }
+  };
+
+  const handleCreatePost = () => {
+    onNavigateToCreatePost();
+    // Refresh data after a short delay to account for navigation
+    setTimeout(() => {
+      onRefresh();
+    }, 1000);
   };
 
   const isWeb = Platform.OS === 'web';
@@ -50,6 +102,16 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user, onNavigateToFriends }) =>
             style={[styles.scrollView, isWeb ? styles.scrollViewWeb : styles.scrollViewMobile]}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={['#667eea', '#764ba2']}
+                tintColor="#667eea"
+                title="Pull to refresh"
+                titleColor="#667eea"
+              />
+            }
           >
             <View style={styles.content}>
               {/* Header */}
@@ -64,26 +126,26 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user, onNavigateToFriends }) =>
                   Welcome back, {user?.displayName || 'User'}!
                 </Text>
                 <Text style={styles.description}>
-                  Level 1 • 0 XP • Ready to earn some points?
+                  {loading ? 'Loading...' : `Level ${userData?.level || 1} • ${userData?.xp || 0} XP • Ready to earn some points?`}
                 </Text>
               </View>
 
               {/* Stats Cards */}
               <View style={styles.statsContainer}>
                 <View style={styles.statCard}>
-                  <Text style={styles.statNumber}>0</Text>
+                  <Text style={styles.statNumber}>{loading ? '--' : userData?.totalPosts || 0}</Text>
                   <Text style={styles.statLabel}>Posts</Text>
                 </View>
                 <View style={styles.statCard}>
-                  <Text style={styles.statNumber}>0</Text>
+                  <Text style={styles.statNumber}>{loading ? '--' : userData?.totalFriends || 0}</Text>
                   <Text style={styles.statLabel}>Friends</Text>
                 </View>
                 <View style={styles.statCard}>
-                  <Text style={styles.statNumber}>1</Text>
+                  <Text style={styles.statNumber}>{loading ? '--' : userData?.level || 1}</Text>
                   <Text style={styles.statLabel}>Level</Text>
                 </View>
                 <View style={styles.statCard}>
-                  <Text style={styles.statNumber}>0</Text>
+                  <Text style={styles.statNumber}>{loading ? '--' : userData?.achievements?.length || 0}</Text>
                   <Text style={styles.statLabel}>Achievements</Text>
                 </View>
               </View>
@@ -92,15 +154,21 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user, onNavigateToFriends }) =>
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>🎯 Quick Actions</Text>
                 <View style={styles.actionGrid}>
-                  <TouchableOpacity style={styles.actionCard} onPress={() => Alert.alert('Coming Soon', 'Create your first post!')}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleCreatePost}>
                     <Text style={styles.actionIcon}>📝</Text>
                     <Text style={styles.actionTitle}>Create Post</Text>
                     <Text style={styles.actionSubtitle}>Share your thoughts</Text>
                   </TouchableOpacity>
                   
+                  <TouchableOpacity style={styles.actionCard} onPress={onNavigateToPostsFeed}>
+                    <Text style={styles.actionIcon}>📱</Text>
+                    <Text style={styles.actionTitle}>View Posts</Text>
+                    <Text style={styles.actionSubtitle}>Browse the feed</Text>
+                  </TouchableOpacity>
+                  
                   <TouchableOpacity style={styles.actionCard} onPress={onNavigateToFriends}>
                     <Text style={styles.actionIcon}>👥</Text>
-                    <Text style={styles.actionTitle}>Find Friends</Text>
+                    <Text style={styles.actionTitle}>Friends</Text>
                     <Text style={styles.actionSubtitle}>Connect with others</Text>
                   </TouchableOpacity>
                   
@@ -108,12 +176,6 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user, onNavigateToFriends }) =>
                     <Text style={styles.actionIcon}>🎮</Text>
                     <Text style={styles.actionTitle}>Challenges</Text>
                     <Text style={styles.actionSubtitle}>Earn XP and rewards</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity style={styles.actionCard} onPress={() => Alert.alert('Coming Soon', 'View your achievements!')}>
-                    <Text style={styles.actionIcon}>🏆</Text>
-                    <Text style={styles.actionTitle}>Achievements</Text>
-                    <Text style={styles.actionSubtitle}>Track progress</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -128,9 +190,14 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user, onNavigateToFriends }) =>
                     Start by creating your first post or connecting with friends. 
                     Your personalized feed will appear here.
                   </Text>
-                  <TouchableOpacity style={styles.placeholderButton} onPress={() => Alert.alert('Coming Soon', 'Create your first post!')}>
-                    <Text style={styles.placeholderButtonText}>Create First Post</Text>
-                  </TouchableOpacity>
+                  <View style={styles.placeholderButtons}>
+                    <TouchableOpacity style={styles.placeholderButton} onPress={handleCreatePost}>
+                      <Text style={styles.placeholderButtonText}>Create Post</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.placeholderButton, styles.secondaryButton]} onPress={onNavigateToPostsFeed}>
+                      <Text style={styles.placeholderButtonText}>View Feed</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
@@ -302,16 +369,25 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     maxWidth: 280,
   },
+  placeholderButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   placeholderButton: {
     backgroundColor: '#fff',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 20,
+    flex: 1,
+  },
+  secondaryButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   placeholderButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#667eea',
+    textAlign: 'center',
   },
   logoutButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',

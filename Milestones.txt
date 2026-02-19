@@ -1,0 +1,20 @@
+GAMIFIED SOCIAL MEDIA
+
+
+Frontend:React-Native/Expo
+
+Backend:Firebase
+
+-Autentificare/Database -Firebase-done 
+-Cross-platform-done
+-DM-uri intre useri-done
+-Postari-comment-uri la postari;tag-uri la postari;-done 
+-Base64 pt imagini-done
+-Feed personalizat
+-Sistem de nivele pentru useri
+-Daily quest,achievements/badges
+-Offline Mode
+-Notificari
+-Admin mode
+-chatbot
+titlu,descriere

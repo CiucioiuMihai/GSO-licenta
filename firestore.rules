@@ -4,12 +4,66 @@ service cloud.firestore {
     // Users can read and write their own user document
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null; // Allow reading other users for search
+      allow read: if request.auth != null; // Allow reading other users for search and posts
+      // Allow updating friends array when accepting friend requests
+      allow update: if request.auth != null && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']) &&
+        (request.auth.uid in request.resource.data.friends || 
+         request.auth.uid in resource.data.friends);
+      // Allow updating post count
+      allow update: if request.auth != null && 
+        request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalPosts']);
+    }
+    
+    // Posts - users can create their own posts, everyone can read posts
+    match /posts/{postId} {
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId;
+      allow read: if request.auth != null;
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || // Owner can update
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likedBy']) || // Anyone can like
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments'])); // Comments count update
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+    }
+    
+    // Comments - users can create comments, read all comments, update/delete their own
+    match /comments/{commentId} {
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId;
+      allow read: if request.auth != null;
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || // Owner can update
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likedBy']) || // Anyone can like
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['repliesCount'])); // Replies count update
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+    }
+    
+    // Replies - users can create replies, read all replies, update/delete their own
+    match /replies/{replyId} {
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId;
+      allow read: if request.auth != null;
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || // Owner can update
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likedBy'])); // Anyone can like
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+    }
+    
+    // Tags - anyone can read, system can create/update (via posts service)
+    match /tags/{tagId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null;
     }
     
     // Friend requests
     match /friendRequests/{requestId} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.fromUserId;
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.fromUserId;
       allow read, update: if request.auth != null && 
         (request.auth.uid == resource.data.fromUserId || 
          request.auth.uid == resource.data.toUserId);
@@ -17,8 +71,10 @@ service cloud.firestore {
     
     // Conversations
     match /conversations/{conversationId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid in resource.data.participants;
+      allow read: if request.auth != null && 
+        (resource == null || request.auth.uid in resource.data.participants);
+      allow write: if request.auth != null && 
+        (resource == null || request.auth.uid in resource.data.participants);
       allow create: if request.auth != null && 
         request.auth.uid in request.resource.data.participants;
     }
@@ -27,9 +83,7 @@ service cloud.firestore {
     match /directMessages/{messageId} {
       allow create: if request.auth != null && 
         request.auth.uid == request.resource.data.fromUserId;
-      allow read: if request.auth != null && 
-        (request.auth.uid == resource.data.fromUserId || 
-         request.auth.uid == resource.data.toUserId);
+      allow read: if request.auth != null;
       allow update: if request.auth != null && 
         request.auth.uid == resource.data.toUserId; // For marking as read
     }
