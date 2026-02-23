@@ -30,6 +30,7 @@ export interface OfflineCacheKeys {
   NOTIFICATIONS: 'offline_notifications';
   ACTIONS: 'offline_actions';
   LAST_SYNC: 'last_sync_time';
+  MESSAGES: 'offline_messages';
 }
 
 // Storage keys for offline data
@@ -38,7 +39,8 @@ const STORAGE_KEYS: OfflineCacheKeys = {
   USERS: 'offline_users',
   NOTIFICATIONS: 'offline_notifications',
   ACTIONS: 'offline_actions',
-  LAST_SYNC: 'last_sync_time'
+  LAST_SYNC: 'last_sync_time',
+  MESSAGES: 'offline_messages'
 };
 
 class OfflineService {
@@ -275,6 +277,71 @@ class OfflineService {
     return offlineComment;
   }
 
+  /**
+   * Send a direct message with offline support
+   */
+  public async sendDirectMessage(
+    fromUserId: string,
+    toUserId: string,
+    message: string
+  ): Promise<void> {
+    const messageData = {
+      fromUserId,
+      toUserId,
+      message,
+      timestamp: Date.now()
+    };
+
+    if (this.isOnline) {
+      try {
+        // Import and use the actual message service
+        const { sendDirectMessage: firebaseSendMessage } = await import('./friendsService');
+        await firebaseSendMessage(toUserId, message);
+        
+        console.log('Message sent successfully online');
+        return;
+      } catch (error) {
+        console.error('Error sending message online:', error);
+        // Fall through to offline handling
+      }
+    }
+
+    // Queue message for offline sending
+    console.log('Queuing message for offline sync...');
+    await this.addOfflineAction({
+      id: `send_message_${Date.now()}`,
+      type: 'SEND_MESSAGE',
+      userId: fromUserId,
+      data: messageData,
+      timestamp: Date.now()
+    });
+
+    // Optionally cache the message locally to show in UI
+    await this.cacheOutgoingMessage(messageData);
+  }
+
+  /**
+   * Cache outgoing message locally
+   */
+  private async cacheOutgoingMessage(messageData: any): Promise<void> {
+    try {
+      const cachedMessages = await this.getCachedData<any[]>('MESSAGES') || [];
+      const messageWithId = {
+        ...messageData,
+        id: `offline_msg_${Date.now()}`,
+        isLocal: true,
+        pending: true,
+        read: false,
+        createdAt: new Date()
+      };
+      
+      const updatedMessages = [...cachedMessages, messageWithId];
+      await AsyncStorage.setItem('offline_messages', JSON.stringify(updatedMessages));
+    } catch (error) {
+      console.error('Error caching outgoing message:', error);
+    }
+  }
+
   // Cache helpers
   private async addPostToCache(post: Post): Promise<void> {
     const cachedPosts = await this.getCachedData<Post[]>('POSTS') || [];
@@ -400,6 +467,12 @@ class OfflineService {
       
       case 'CREATE_COMMENT':
         await firebaseCreateComment(action.data.postId, action.data.text);
+        break;
+
+      case 'SEND_MESSAGE':
+        const { sendDirectMessage: firebaseSendMessage } = await import('./friendsService');
+        await firebaseSendMessage(action.data.toUserId, action.data.message);
+        console.log('Offline message synced successfully');
         break;
       
       default:

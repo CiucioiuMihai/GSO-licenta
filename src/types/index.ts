@@ -273,7 +273,7 @@ export interface SyncStatus {
 
 export interface OfflineAction {
   id: string;
-  type: string;
+  type: 'CREATE_POST' | 'LIKE_POST' | 'CREATE_COMMENT' | 'SEND_MESSAGE';
   userId: string;
   data: any;
   timestamp: number;

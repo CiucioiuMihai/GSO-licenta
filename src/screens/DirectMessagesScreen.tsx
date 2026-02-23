@@ -18,6 +18,7 @@ import {
   getConversationMessages, 
   markMessagesAsRead 
 } from '@/services/friendsService';
+import { offlineService } from '@/services/offlineService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
 
@@ -77,12 +78,22 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
     console.log('Sending message:', newMessage.trim(), 'to user:', otherUserId);
     setLoading(true);
     try {
-      await sendDirectMessage(otherUserId, newMessage.trim());
+      // Use offline service for automatic offline support
+      await offlineService.sendDirectMessage(
+        currentUser?.uid || '',
+        otherUserId,
+        newMessage.trim()
+      );
       console.log('Message sent successfully');
       setNewMessage('');
     } catch (error: any) {
       console.error('Error sending message:', error);
-      Alert.alert('Error', error.message || 'Failed to send message');
+      Alert.alert(
+        'Message Queued', 
+        'Your message will be sent when you reconnect to the internet.',
+        [{ text: 'OK' }]
+      );
+      setNewMessage(''); // Clear input even if offline
     } finally {
       setLoading(false);
     }

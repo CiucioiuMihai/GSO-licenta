@@ -11,7 +11,7 @@ Backend:Firebase
 -Postari-comment-uri la postari;tag-uri la postari;-done 
 -Base64 pt imagini-done
 -Feed personalizat
--Sistem de nivele pentru useri
+-Sistem de nivele pentru useri-trebe afisate(exista logica deja)
 -Daily quest,achievements/badges
 -Offline Mode
 -Notificari

@@ -12,6 +12,7 @@ interface StorageKeys {
   LAST_SYNC: string;
   APP_DATA: string;
   USER_SETTINGS: string;
+  MESSAGES_CACHE: string;
 }
 
 // Cache item interface
@@ -53,7 +54,8 @@ const STORAGE_KEYS: StorageKeys = {
   OFFLINE_QUEUE: 'offline_queue',
   LAST_SYNC: 'last_sync',
   APP_DATA: 'app_data',
-  USER_SETTINGS: 'user_settings'
+  USER_SETTINGS: 'user_settings',
+  MESSAGES_CACHE: 'messages_cache'
 };
 
 // Cache Management
