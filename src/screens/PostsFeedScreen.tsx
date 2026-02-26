@@ -25,7 +25,13 @@ import {
   getPostComments, 
   likeComment,
   addReply,
-  getCommentReplies
+  getCommentReplies,
+  getPostsFromFollowing,
+  getPostsFromFriends,
+  getPostsByTagStatic,
+  followUser,
+  unfollowUser,
+  getUserDataWithCounts
 } from '@/services/postsService';
 import { auth } from '@/services/firebase';
 
@@ -35,6 +41,8 @@ interface PostsFeedScreenProps {
 }
 
 const { width } = Dimensions.get('window');
+
+type FilterType = 'all' | 'following' | 'friends' | 'tag';
 
 const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack }) => {
   const [posts, setPosts] = useState<Post[]>([]);
@@ -51,16 +59,70 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
   const [selectedImage, setSelectedImage] = useState('');
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedPostImages, setSelectedPostImages] = useState<any[]>([]);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [tagFilter, setTagFilter] = useState('');
+  const [currentUserData, setCurrentUserData] = useState<User | null>(null);
   const currentUser = auth.currentUser;
 
+  // Fetch current user data
   useEffect(() => {
-    const unsubscribe = getPosts((newPosts) => {
-      setPosts(newPosts);
-      loadUsersForPosts(newPosts);
-    }, 20);
+    const fetchCurrentUser = async () => {
+      if (currentUser) {
+        const userData = await getUserDataWithCounts(currentUser.uid);
+        setCurrentUserData(userData);
+      }
+    };
+    fetchCurrentUser();
+  }, [currentUser]);
 
-    return unsubscribe;
-  }, []);
+  // Fetch posts based on active filter
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let unsubscribe: (() => void) | undefined;
+    
+    const setupPosts = async () => {
+      if (activeFilter === 'all' || (activeFilter === 'tag' && !tagFilter.trim())) {
+        // Only use real-time listener for 'all' posts
+        unsubscribe = getPosts((newPosts) => {
+          setPosts(newPosts);
+          loadUsersForPosts(newPosts);
+        }, 20);
+      } else {
+        // For filtered views, use static fetch
+        setLoading(true);
+        try {
+          let fetchedPosts: Post[] = [];
+          
+          switch (activeFilter) {
+            case 'following':
+              fetchedPosts = await getPostsFromFollowing(currentUser.uid);
+              break;
+            case 'friends':
+              fetchedPosts = await getPostsFromFriends(currentUser.uid);
+              break;
+            case 'tag':
+              fetchedPosts = await getPostsByTagStatic(tagFilter.trim());
+              break;
+          }
+          
+          setPosts(fetchedPosts);
+          loadUsersForPosts(fetchedPosts);
+        } catch (error) {
+          console.error('Error fetching posts:', error);
+          setLoading(false);
+        }
+      }
+    };
+
+    setupPosts();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [currentUser, activeFilter, tagFilter]);
 
   const loadUsersForPosts = async (posts: Post[]) => {
     try {
@@ -160,6 +222,26 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
     // The useEffect will handle reloading through the listener
   };
 
+  const handleTagSearch = () => {
+    // Trigger re-fetch by updating a dummy state or just forcing the useEffect
+    if (activeFilter === 'tag' && tagFilter.trim()) {
+      // The useEffect will automatically trigger when dependencies change
+      // This is just for explicit search button press - we can force it
+      setLoading(true);
+      const fetchTagPosts = async () => {
+        try {
+          const fetchedPosts = await getPostsByTagStatic(tagFilter.trim());
+          setPosts(fetchedPosts);
+          loadUsersForPosts(fetchedPosts);
+        } catch (error) {
+          console.error('Error fetching posts by tag:', error);
+          setLoading(false);
+        }
+      };
+      fetchTagPosts();
+    }
+  };
+
   const formatTime = (date: Date) => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -174,8 +256,47 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
     return `${seconds}s`;
   };
 
+  const handleFollowUser = async (userId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      await followUser(userId);
+      // Refresh current user data to update following list
+      const userData = await getUserDataWithCounts(currentUser.uid);
+      setCurrentUserData(userData);
+      Alert.alert('Success', 'You are now following this user!');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to follow user');
+    }
+  };
+
+  const handleUnfollowUser = async (userId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      await unfollowUser(userId);
+      // Refresh current user data to update following list
+      const userData = await getUserDataWithCounts(currentUser.uid);
+      setCurrentUserData(userData);
+      Alert.alert('Success', 'You have unfollowed this user');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to unfollow user');
+    }
+  };
+
+  const isFollowing = (userId: string): boolean => {
+    return currentUserData?.following?.includes(userId) || false;
+  };
+
+  const isFriend = (userId: string): boolean => {
+    return currentUserData?.friends?.includes(userId) || false;
+  };
+
   const renderPost = ({ item }: { item: Post & { user: User } }) => {
     const isLiked = item.likedBy.includes(currentUser?.uid || '');
+    const isOwnPost = item.userId === currentUser?.uid;
+    const userIsFriend = isFriend(item.userId);
+    const userIsFollowed = isFollowing(item.userId);
     
     return (
       <View style={styles.postContainer}>
@@ -188,7 +309,24 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
             style={styles.avatar}
           />
           <View style={styles.userInfo}>
-            <Text style={styles.username}>{item.user.displayName}</Text>
+            <View style={styles.userNameRow}>
+              <Text style={styles.username}>{item.user.displayName}</Text>
+              {!isOwnPost && !userIsFriend && (
+                <TouchableOpacity
+                  style={[styles.followButton, userIsFollowed && styles.followingButton]}
+                  onPress={() => userIsFollowed ? handleUnfollowUser(item.userId) : handleFollowUser(item.userId)}
+                >
+                  <Text style={[styles.followButtonText, userIsFollowed && styles.followingButtonText]}>
+                    {userIsFollowed ? 'Following' : 'Follow'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {userIsFriend && (
+                <View style={styles.friendBadge}>
+                  <Text style={styles.friendBadgeText}>Friend</Text>
+                </View>
+              )}
+            </View>
             <View style={styles.postMeta}>
               <Text style={styles.timestamp}>{formatTime(item.createdAt)}</Text>
               {item.tags && item.tags.length > 0 && (
@@ -383,6 +521,60 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
           <TouchableOpacity style={styles.createButton} onPress={onCreatePost}>
             <Text style={styles.createButtonText}>✏️</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Filter Tabs */}
+        <View style={styles.filterContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+            <TouchableOpacity
+              style={[styles.filterTab, activeFilter === 'all' && styles.filterTabActive]}
+              onPress={() => setActiveFilter('all')}
+            >
+              <Text style={[styles.filterTabText, activeFilter === 'all' && styles.filterTabTextActive]}>
+                All Posts
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterTab, activeFilter === 'following' && styles.filterTabActive]}
+              onPress={() => setActiveFilter('following')}
+            >
+              <Text style={[styles.filterTabText, activeFilter === 'following' && styles.filterTabTextActive]}>
+                Following
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterTab, activeFilter === 'friends' && styles.filterTabActive]}
+              onPress={() => setActiveFilter('friends')}
+            >
+              <Text style={[styles.filterTabText, activeFilter === 'friends' && styles.filterTabTextActive]}>
+                Friends
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterTab, activeFilter === 'tag' && styles.filterTabActive]}
+              onPress={() => setActiveFilter('tag')}
+            >
+              <Text style={[styles.filterTabText, activeFilter === 'tag' && styles.filterTabTextActive]}>
+                By Tag
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+          {activeFilter === 'tag' && (
+            <View style={styles.tagInputContainer}>
+              <TextInput
+                style={styles.tagInput}
+                placeholder="Enter tag..."
+                placeholderTextColor="#999"
+                value={tagFilter}
+                onChangeText={setTagFilter}
+                onSubmitEditing={handleTagSearch}
+                returnKeyType="search"
+              />
+              <TouchableOpacity style={styles.tagSearchButton} onPress={handleTagSearch}>
+                <Text style={styles.tagSearchButtonText}>🔍</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Posts Feed */}
@@ -840,6 +1032,100 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 30,
     fontWeight: 'bold',
+  },
+  // Filter styles
+  filterContainer: {
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 600 : '100%',
+    alignSelf: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  filterScroll: {
+    paddingHorizontal: 15,
+  },
+  filterTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  filterTabActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  filterTabText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  filterTabTextActive: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  tagInputContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 15,
+    paddingTop: 10,
+    alignItems: 'center',
+  },
+  tagInput: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    color: 'white',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    fontSize: 14,
+    marginRight: 10,
+  },
+  tagSearchButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tagSearchButtonText: {
+    fontSize: 16,
+  },
+  // Follow button styles
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  followButton: {
+    backgroundColor: 'rgba(102, 126, 234, 0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 10,
+  },
+  followingButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  followButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  followingButtonText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  friendBadge: {
+    backgroundColor: 'rgba(118, 75, 162, 0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: 10,
+  },
+  friendBadgeText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '600',
   },
 });
 

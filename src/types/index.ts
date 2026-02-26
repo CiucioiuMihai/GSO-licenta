@@ -13,6 +13,7 @@ export interface User {
   followers: string[];
   totalPosts: number;
   totalLikes: number;
+  totalComments?: number;
   totalFollowers?: number;
   totalFollowing?: number;
   totalFriends?: number;
@@ -31,6 +32,9 @@ export interface User {
   privacySettings?: PrivacySettings;
   virtualCurrency?: { [key: string]: number };
   lastCurrencyUpdate?: Date;
+  retroactiveXPApplied?: boolean;
+  retroactiveXPAmount?: number;
+  lastRetroactiveCheck?: Date;
 }
 
 export interface Post {
@@ -188,6 +192,7 @@ export interface Conversation {
   participants: string[];
   lastMessage: string;
   lastMessageAt: Date;
+  otherUserName?: string; // Populated on the client side
   [key: `unreadCount_${string}`]: number;
 }
 

@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/services/firebase';
 import { getUserDataWithCounts } from '@/services/postsService';
+import { handleDailyLogin } from '@/services/levelService';
 import { User } from '@/types';
 import Navbar from '../components/Navbar';
 
@@ -22,13 +23,15 @@ interface HomeScreenProps {
   onNavigateToFriends: () => void;
   onNavigateToPostsFeed: () => void;
   onNavigateToCreatePost: () => void;
+  onNavigateToAchievements: () => void;
 }
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ 
   user, 
   onNavigateToFriends, 
   onNavigateToPostsFeed, 
-  onNavigateToCreatePost 
+  onNavigateToCreatePost,
+  onNavigateToAchievements 
 }) => {
   const [activeTab, setActiveTab] = useState('home');
   const [userData, setUserData] = useState<User | null>(null);
@@ -40,6 +43,14 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
       try {
         const userDataWithCounts = await getUserDataWithCounts(user.uid);
         setUserData(userDataWithCounts);
+        
+        // Track daily login and update streak
+        if (userDataWithCounts) {
+          await handleDailyLogin(user.uid, userDataWithCounts);
+          // Refresh user data to get updated streak and XP
+          const updatedUserData = await getUserDataWithCounts(user.uid);
+          setUserData(updatedUserData);
+        }
       } catch (error) {
         console.error('Error fetching user data:', error);
       }
@@ -167,15 +178,15 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
                   </TouchableOpacity>
                   
                   <TouchableOpacity style={styles.actionCard} onPress={onNavigateToFriends}>
-                    <Text style={styles.actionIcon}>👥</Text>
-                    <Text style={styles.actionTitle}>Friends</Text>
-                    <Text style={styles.actionSubtitle}>Connect with others</Text>
+                    <Text style={styles.actionIcon}>�</Text>
+                    <Text style={styles.actionTitle}>Messages</Text>
+                    <Text style={styles.actionSubtitle}>Chat & friends</Text>
                   </TouchableOpacity>
                   
-                  <TouchableOpacity style={styles.actionCard} onPress={() => Alert.alert('Coming Soon', 'Complete challenges!')}>
-                    <Text style={styles.actionIcon}>🎮</Text>
-                    <Text style={styles.actionTitle}>Challenges</Text>
-                    <Text style={styles.actionSubtitle}>Earn XP and rewards</Text>
+                  <TouchableOpacity style={styles.actionCard} onPress={onNavigateToAchievements}>
+                    <Text style={styles.actionIcon}>🏆</Text>
+                    <Text style={styles.actionTitle}>Achievements</Text>
+                    <Text style={styles.actionSubtitle}>View your progress</Text>
                   </TouchableOpacity>
                 </View>
               </View>

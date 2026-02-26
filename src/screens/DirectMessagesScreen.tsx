@@ -18,6 +18,7 @@ import {
   getConversationMessages, 
   markMessagesAsRead 
 } from '@/services/friendsService';
+import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
 import { offlineService } from '@/services/offlineService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
@@ -37,6 +38,7 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
   const [newMessage, setNewMessage] = useState('');
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
+  const [currentUserData, setCurrentUserData] = useState<User | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
 
@@ -71,6 +73,53 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
 
     return unsubscribe;
   }, [conversationId, otherUserId]);
+
+  useEffect(() => {
+    // Load current user data for following status
+    const loadCurrentUser = async () => {
+      if (currentUser) {
+        const userData = await getUserDataWithCounts(currentUser.uid);
+        setCurrentUserData(userData);
+      }
+    };
+    loadCurrentUser();
+  }, [currentUser]);
+
+  const handleFollowUser = async () => {
+    if (!currentUser || !otherUserId) return;
+    
+    try {
+      await followUser(otherUserId);
+      // Refresh current user data
+      const userData = await getUserDataWithCounts(currentUser.uid);
+      setCurrentUserData(userData);
+      Alert.alert('Success', 'You are now following this user!');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to follow user');
+    }
+  };
+
+  const handleUnfollowUser = async () => {
+    if (!currentUser || !otherUserId) return;
+    
+    try {
+      await unfollowUser(otherUserId);
+      // Refresh current user data
+      const userData = await getUserDataWithCounts(currentUser.uid);
+      setCurrentUserData(userData);
+      Alert.alert('Success', 'You have unfollowed this user');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to unfollow user');
+    }
+  };
+
+  const isFollowing = (): boolean => {
+    return currentUserData?.following?.includes(otherUserId) || false;
+  };
+
+  const isFriend = (): boolean => {
+    return currentUserData?.friends?.includes(otherUserId) || false;
+  };
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || loading) return;
@@ -147,17 +196,33 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={onBack}>
-              <Text style={styles.backButtonText}>← Back</Text>
+              <Text style={styles.backButtonText}>←</Text>
             </TouchableOpacity>
             <View style={styles.headerInfo}>
               <Text style={styles.headerTitle}>
                 {otherUser?.displayName || 'Loading...'}
               </Text>
-              <Text style={styles.headerSubtitle}>
-                {otherUser?.isOnline ? '🟢 Online' : '⚪ Offline'}
-              </Text>
+              <View style={styles.headerBadges}>
+                <Text style={styles.headerSubtitle}>
+                  {otherUser?.isOnline ? '🟢 Online' : '⚪ Offline'}
+                </Text>
+                {isFriend() && (
+                  <View style={styles.friendBadge}>
+                    <Text style={styles.friendBadgeText}>Friend</Text>
+                  </View>
+                )}
+              </View>
             </View>
-            <View style={styles.headerRight} />
+            {!isFriend() && otherUser && (
+              <TouchableOpacity
+                style={[styles.followButton, isFollowing() && styles.followingButton]}
+                onPress={isFollowing() ? handleUnfollowUser : handleFollowUser}
+              >
+                <Text style={[styles.followButtonText, isFollowing() && styles.followingButtonText]}>
+                  {isFollowing() ? 'Following' : 'Follow'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Messages List */}
@@ -212,33 +277,67 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.2)',
   },
   backButton: {
-    padding: 5,
+    padding: 8,
+    marginRight: 8,
   },
   backButtonText: {
-    fontSize: 16,
+    fontSize: 24,
     color: '#fff',
-    fontWeight: '500',
+    fontWeight: '300',
   },
   headerInfo: {
     flex: 1,
-    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
   },
+  headerBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
   headerSubtitle: {
     fontSize: 14,
     color: '#fff',
     opacity: 0.8,
-    marginTop: 2,
+    marginRight: 8,
+  },
+  friendBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  friendBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  followButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginLeft: 8,
+  },
+  followingButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  followButtonText: {
+    color: '#667eea',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  followingButtonText: {
+    color: '#fff',
   },
   headerRight: {
     width: 40, // Balance the back button
@@ -298,38 +397,46 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: Platform.OS === 'android' ? 8 : 12,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
   messageInput: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 24,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
     fontSize: 16,
-    color: '#fff',
+    color: '#333',
     maxHeight: 100,
-    marginRight: 12,
+    marginRight: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   sendButton: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+    backgroundColor: '#667eea',
+    borderRadius: 24,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   sendButtonDisabled: {
     opacity: 0.5,
   },
   sendButtonText: {
-    fontSize: 18,
-    color: '#667eea',
+    fontSize: 20,
+    color: '#fff',
     fontWeight: '600',
   },
 });

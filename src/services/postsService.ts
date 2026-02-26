@@ -21,6 +21,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { Post, Comment, Reply, Tag, User } from '@/types';
+import { calculateLevel } from '@/utils/gamification';
 
 // Post Operations
 export const createPost = async (content: string, tags: string[] = [], images?: any[]): Promise<void> => {
@@ -130,6 +131,115 @@ export const getPostsByTag = (tag: string, callback: (posts: Post[]) => void) =>
   );
 };
 
+// Get posts from followed users
+export const getPostsFromFollowing = async (userId: string): Promise<Post[]> => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) return [];
+    
+    const userData = userDoc.data() as User;
+    // Filter out current user from following list to exclude own posts
+    const following = (userData.following || []).filter(id => id !== userId);
+    
+    if (following.length === 0) return [];
+    
+    // Firestore 'in' queries are limited to 10 items, so we need to batch
+    const batches: string[][] = [];
+    for (let i = 0; i < following.length; i += 10) {
+      batches.push(following.slice(i, i + 10));
+    }
+    
+    const allPosts: Post[] = [];
+    for (const batch of batches) {
+      const postsQuery = query(
+        collection(db, 'posts'),
+        where('userId', 'in', batch),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
+      const postsSnapshot = await getDocs(postsQuery);
+      const posts = postsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as Post[];
+      allPosts.push(...posts);
+    }
+    
+    // Sort by date and return most recent
+    return allPosts.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 20);
+  } catch (error) {
+    console.error('Error getting posts from following:', error);
+    return [];
+  }
+};
+
+// Get posts from friends
+export const getPostsFromFriends = async (userId: string): Promise<Post[]> => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) return [];
+    
+    const userData = userDoc.data() as User;
+    // Filter out current user from friends list to exclude own posts
+    const friends = (userData.friends || []).filter(id => id !== userId);
+    
+    if (friends.length === 0) return [];
+    
+    // Firestore 'in' queries are limited to 10 items
+    const batches: string[][] = [];
+    for (let i = 0; i < friends.length; i += 10) {
+      batches.push(friends.slice(i, i + 10));
+    }
+    
+    const allPosts: Post[] = [];
+    for (const batch of batches) {
+      const postsQuery = query(
+        collection(db, 'posts'),
+        where('userId', 'in', batch),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
+      const postsSnapshot = await getDocs(postsQuery);
+      const posts = postsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as Post[];
+      allPosts.push(...posts);
+    }
+    
+    // Sort by date and return most recent
+    return allPosts.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 20);
+  } catch (error) {
+    console.error('Error getting posts from friends:', error);
+    return [];
+  }
+};
+
+export const getPostsByTagStatic = async (tag: string): Promise<Post[]> => {
+  try {
+    const postsQuery = query(
+      collection(db, 'posts'),
+      where('tags', 'array-contains', tag),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+    const postsSnapshot = await getDocs(postsQuery);
+    return postsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate() || new Date(),
+      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+    })) as Post[];
+  } catch (error) {
+    console.error('Error getting posts by tag:', error);
+    return [];
+  }
+};
+
 export const likePost = async (postId: string): Promise<void> => {
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Not authenticated');
@@ -211,6 +321,13 @@ export const addComment = async (postId: string, text: string): Promise<void> =>
   const batch = writeBatch(db);
 
   try {
+    // Get the post to find the owner
+    const postDoc = await getDoc(doc(db, 'posts', postId));
+    if (!postDoc.exists()) throw new Error('Post not found');
+    
+    const post = postDoc.data() as Post;
+    const postOwnerId = post.userId;
+
     // Create comment
     const commentRef = doc(collection(db, 'comments'));
     const commentData: Omit<Comment, 'id'> = {
@@ -234,6 +351,12 @@ export const addComment = async (postId: string, text: string): Promise<void> =>
     });
 
     await batch.commit();
+    
+    // Award XP to post owner (if not commenting on own post)
+    if (postOwnerId !== currentUser.uid) {
+      const { awardXP } = await import('./levelService');
+      await awardXP(postOwnerId, 'receive_comment');
+    }
   } catch (error) {
     console.error('Error adding comment:', error);
     throw error;
@@ -400,6 +523,57 @@ export const getUserData = async (userId: string): Promise<User | null> => {
   }
 };
 
+// Follow/Unfollow functionality
+export const followUser = async (targetUserId: string): Promise<void> => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Not authenticated');
+
+  try {
+    const userRef = doc(db, 'users', currentUser.uid);
+    const targetUserRef = doc(db, 'users', targetUserId);
+    
+    // Add to current user's following list
+    await updateDoc(userRef, {
+      following: arrayUnion(targetUserId)
+    });
+    
+    // Add to target user's followers list
+    await updateDoc(targetUserRef, {
+      followers: arrayUnion(currentUser.uid)
+    });
+    
+    console.log('Successfully followed user:', targetUserId);
+  } catch (error) {
+    console.error('Error following user:', error);
+    throw error;
+  }
+};
+
+export const unfollowUser = async (targetUserId: string): Promise<void> => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Not authenticated');
+
+  try {
+    const userRef = doc(db, 'users', currentUser.uid);
+    const targetUserRef = doc(db, 'users', targetUserId);
+    
+    // Remove from current user's following list
+    await updateDoc(userRef, {
+      following: arrayRemove(targetUserId)
+    });
+    
+    // Remove from target user's followers list
+    await updateDoc(targetUserRef, {
+      followers: arrayRemove(currentUser.uid)
+    });
+    
+    console.log('Successfully unfollowed user:', targetUserId);
+  } catch (error) {
+    console.error('Error unfollowing user:', error);
+    throw error;
+  }
+};
+
 // Get accurate user post count
 export const getUserPostCount = async (userId: string): Promise<number> => {
   try {
@@ -415,12 +589,58 @@ export const getUserPostCount = async (userId: string): Promise<number> => {
   }
 };
 
+// Get total likes received by user on all their posts
+export const getUserTotalLikes = async (userId: string): Promise<number> => {
+  try {
+    const postsQuery = query(
+      collection(db, 'posts'),
+      where('userId', '==', userId)
+    );
+    const postsSnapshot = await getDocs(postsQuery);
+    
+    let totalLikes = 0;
+    postsSnapshot.forEach((doc) => {
+      const postData = doc.data() as Post;
+      totalLikes += postData.likes || 0;
+    });
+    
+    return totalLikes;
+  } catch (error) {
+    console.error('Error getting user total likes:', error);
+    return 0;
+  }
+};
+
+// Get total comments received by user on all their posts
+export const getUserTotalComments = async (userId: string): Promise<number> => {
+  try {
+    const postsQuery = query(
+      collection(db, 'posts'),
+      where('userId', '==', userId)
+    );
+    const postsSnapshot = await getDocs(postsQuery);
+    
+    let totalComments = 0;
+    postsSnapshot.forEach((doc) => {
+      const postData = doc.data() as Post;
+      totalComments += postData.comments || 0;
+    });
+    
+    return totalComments;
+  } catch (error) {
+    console.error('Error getting user total comments:', error);
+    return 0;
+  }
+};
+
 // Get user data with accurate counts
 export const getUserDataWithCounts = async (userId: string): Promise<User | null> => {
   try {
-    const [userDoc, postCount] = await Promise.all([
+    const [userDoc, postCount, totalLikes, totalComments] = await Promise.all([
       getDoc(doc(db, 'users', userId)),
-      getUserPostCount(userId)
+      getUserPostCount(userId),
+      getUserTotalLikes(userId),
+      getUserTotalComments(userId)
     ]);
     
     if (userDoc.exists()) {
@@ -428,25 +648,65 @@ export const getUserDataWithCounts = async (userId: string): Promise<User | null
       
       // Ensure all required fields exist with defaults
       userData.totalPosts = postCount; // Always use real count
+      userData.totalLikes = totalLikes; // Always use real count
+      userData.totalComments = totalComments; // Always use real count
       userData.totalFriends = userData.friends?.length || 0;
       userData.totalFollowers = userData.followers?.length || 0;
       userData.totalFollowing = userData.following?.length || 0;
       userData.xp = userData.xp || 0;
-      userData.level = userData.level || 1;
+      
+      // Always recalculate level from XP to ensure consistency
+      const calculatedLevel = calculateLevel(userData.xp);
+      userData.level = calculatedLevel;
+      
+      // Initialize dailyStreak to 1 for active users if not set
+      const hasActivity = (userData.totalPosts || 0) > 0 || 
+                         (userData.totalFriends || 0) > 0 || 
+                         (userData.totalLikes || 0) > 0;
+      if (hasActivity && !userData.dailyStreak) {
+        userData.dailyStreak = 1;
+      }
+      
       userData.achievements = userData.achievements || [];
       userData.friends = userData.friends || [];
       userData.followers = userData.followers || [];
       userData.following = userData.following || [];
       
-      // Update the database with accurate counts if they don't match
-      const needsUpdate = userData.totalPosts !== (userDoc.data().totalPosts || 0);
+      // Update the database with accurate counts and level if they don't match
+      const dbLevel = userDoc.data().level || 1;
+      const dbDailyStreak = userDoc.data().dailyStreak || 0;
+      const needsUpdate = userData.totalPosts !== (userDoc.data().totalPosts || 0) ||
+                         userData.totalLikes !== (userDoc.data().totalLikes || 0) ||
+                         userData.totalComments !== (userDoc.data().totalComments || 0) ||
+                         dbLevel !== calculatedLevel ||
+                         (userData.dailyStreak && dbDailyStreak !== userData.dailyStreak);
+      
       if (needsUpdate) {
-        await updateDoc(doc(db, 'users', userId), {
+        console.log('getUserDataWithCounts - Updating user data:', {
           totalPosts: userData.totalPosts,
+          totalLikes: userData.totalLikes,
+          totalComments: userData.totalComments,
+          xp: userData.xp,
+          oldLevel: dbLevel,
+          newLevel: calculatedLevel,
+          dailyStreak: userData.dailyStreak
+        });
+        
+        const updateData: any = {
+          totalPosts: userData.totalPosts,
+          totalLikes: userData.totalLikes,
+          totalComments: userData.totalComments,
           totalFriends: userData.totalFriends,
           totalFollowers: userData.totalFollowers,
           totalFollowing: userData.totalFollowing,
-        });
+          level: calculatedLevel,
+        };
+        
+        if (userData.dailyStreak && dbDailyStreak !== userData.dailyStreak) {
+          updateData.dailyStreak = userData.dailyStreak;
+        }
+        
+        await updateDoc(doc(db, 'users', userId), updateData);
       }
       
       return userData;

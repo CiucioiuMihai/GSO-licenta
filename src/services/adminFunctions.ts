@@ -11,6 +11,7 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { batchApplyRetroactiveXP } from './levelService';
 
 // Admin stats interface
 interface AdminStats {
@@ -259,5 +260,60 @@ export const detectSuspiciousActivity = async (userId: string, action: string): 
   } catch (error) {
     console.error('Error detecting suspicious activity:', error);
     return false;
+  }
+};
+
+/**
+ * Apply retroactive XP to all users
+ * This is an admin function that should be run once when implementing gamification
+ */
+export const adminApplyRetroactiveXPToAllUsers = async (
+  onProgress?: (completed: number, total: number, currentUser?: string) => void
+): Promise<{
+  success: boolean;
+  result?: {
+    totalUsers: number;
+    usersUpdated: number;
+    totalXPAwarded: number;
+    errors: string[];
+  };
+  error?: string;
+}> => {
+  try {
+    console.log('Starting admin retroactive XP application...');
+    
+    const result = await batchApplyRetroactiveXP(onProgress);
+    
+    // Log the operation for auditing
+    await addDoc(collection(db, 'adminActions'), {
+      action: 'retroactive_xp_application',
+      timestamp: serverTimestamp(),
+      result: {
+        totalUsers: result.totalUsers,
+        usersUpdated: result.usersUpdated,
+        totalXPAwarded: result.totalXPAwarded,
+        errorCount: result.errors.length
+      }
+    });
+    
+    return {
+      success: true,
+      result
+    };
+  } catch (error: any) {
+    console.error('Admin retroactive XP application failed:', error);
+    
+    // Log the error
+    await addDoc(collection(db, 'adminActions'), {
+      action: 'retroactive_xp_application',
+      timestamp: serverTimestamp(),
+      error: error.message,
+      success: false
+    });
+    
+    return {
+      success: false,
+      error: error.message
+    };
   }
 };

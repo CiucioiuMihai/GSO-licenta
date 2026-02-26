@@ -20,6 +20,7 @@ import {
   sendFriendRequest,
   getUserConversations,
 } from '@/services/friendsService';
+import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
 
@@ -38,9 +39,20 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentUserData, setCurrentUserData] = useState<User | null>(null);
+  const currentUser = auth.currentUser;
 
   useEffect(() => {
     loadFriends();
+    
+    // Load current user data for following status
+    const loadCurrentUser = async () => {
+      if (currentUser) {
+        const userData = await getUserDataWithCounts(currentUser.uid);
+        setCurrentUserData(userData);
+      }
+    };
+    loadCurrentUser();
     
     // Listen for friend requests
     const unsubscribeRequests = getPendingFriendRequests((requests) => {
@@ -184,6 +196,42 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
     }
   };
 
+  const handleFollowUser = async (userId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      await followUser(userId);
+      // Refresh current user data
+      const userData = await getUserDataWithCounts(currentUser.uid);
+      setCurrentUserData(userData);
+      Alert.alert('Success', 'You are now following this user!');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to follow user');
+    }
+  };
+
+  const handleUnfollowUser = async (userId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      await unfollowUser(userId);
+      // Refresh current user data
+      const userData = await getUserDataWithCounts(currentUser.uid);
+      setCurrentUserData(userData);
+      Alert.alert('Success', 'You have unfollowed this user');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to unfollow user');
+    }
+  };
+
+  const isFollowing = (userId: string): boolean => {
+    return currentUserData?.following?.includes(userId) || false;
+  };
+
+  const isFriend = (userId: string): boolean => {
+    return currentUserData?.friends?.includes(userId) || false;
+  };
+
   const handleStartChat = (friend: User) => {
     const currentUserId = auth.currentUser?.uid;
     if (!currentUserId) return;
@@ -224,29 +272,43 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
     return 'Unknown User';
   };
 
-  const renderFriend = ({ item }: { item: User }) => (
-    <View style={styles.friendItem}>
-      <View style={styles.friendInfo}>
-        <View style={styles.friendAvatar}>
-          <Text style={styles.friendAvatarText}>
-            {item.displayName.charAt(0).toUpperCase()}
-          </Text>
+  const renderFriend = ({ item }: { item: User }) => {
+    const userIsFollowed = isFollowing(item.id);
+    
+    return (
+      <View style={styles.friendItem}>
+        <View style={styles.friendInfo}>
+          <View style={styles.friendAvatar}>
+            <Text style={styles.friendAvatarText}>
+              {item.displayName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.friendDetails}>
+            <Text style={styles.friendName}>{item.displayName}</Text>
+            <Text style={styles.friendStatus}>
+              {item.isOnline ? '🟢 Online' : '⚪ Offline'}
+            </Text>
+          </View>
         </View>
-        <View style={styles.friendDetails}>
-          <Text style={styles.friendName}>{item.displayName}</Text>
-          <Text style={styles.friendStatus}>
-            {item.isOnline ? '🟢 Online' : '⚪ Offline'}
-          </Text>
+        <View style={styles.friendActions}>
+          <TouchableOpacity
+            style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
+            onPress={() => userIsFollowed ? handleUnfollowUser(item.id) : handleFollowUser(item.id)}
+          >
+            <Text style={[styles.followButtonTextSmall, userIsFollowed && styles.followingButtonTextSmall]}>
+              {userIsFollowed ? '✓' : '+'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.chatButton}
+            onPress={() => handleStartChat(item)}
+          >
+            <Text style={styles.chatButtonText}>💬</Text>
+          </TouchableOpacity>
         </View>
       </View>
-      <TouchableOpacity
-        style={styles.chatButton}
-        onPress={() => handleStartChat(item)}
-      >
-        <Text style={styles.chatButtonText}>💬</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   const renderFriendRequest = ({ item }: { item: FriendRequest }) => (
     <View style={styles.requestItem}>
@@ -278,27 +340,41 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
     </View>
   );
 
-  const renderSearchResult = ({ item }: { item: User }) => (
-    <View style={styles.friendItem}>
-      <View style={styles.friendInfo}>
-        <View style={styles.friendAvatar}>
-          <Text style={styles.friendAvatarText}>
-            {item.displayName.charAt(0).toUpperCase()}
-          </Text>
+  const renderSearchResult = ({ item }: { item: User }) => {
+    const userIsFollowed = isFollowing(item.id);
+    
+    return (
+      <View style={styles.friendItem}>
+        <View style={styles.friendInfo}>
+          <View style={styles.friendAvatar}>
+            <Text style={styles.friendAvatarText}>
+              {item.displayName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.friendDetails}>
+            <Text style={styles.friendName}>{item.displayName}</Text>
+            <Text style={styles.friendStatus}>{item.email}</Text>
+          </View>
         </View>
-        <View style={styles.friendDetails}>
-          <Text style={styles.friendName}>{item.displayName}</Text>
-          <Text style={styles.friendStatus}>{item.email}</Text>
+        <View style={styles.friendActions}>
+          <TouchableOpacity
+            style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
+            onPress={() => userIsFollowed ? handleUnfollowUser(item.id) : handleFollowUser(item.id)}
+          >
+            <Text style={[styles.followButtonTextSmall, userIsFollowed && styles.followingButtonTextSmall]}>
+              {userIsFollowed ? '✓' : '+'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => handleSendFriendRequest(item.id)}
+          >
+            <Text style={styles.addButtonText}>Add</Text>
+          </TouchableOpacity>
         </View>
       </View>
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => handleSendFriendRequest(item.id)}
-      >
-        <Text style={styles.addButtonText}>+</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   const renderConversation = ({ item }: { item: Conversation }) => {
     const currentUserId = auth.currentUser?.uid;
@@ -587,17 +663,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   addButton: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+    backgroundColor: 'rgba(118, 75, 162, 0.9)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addButtonText: {
-    fontSize: 24,
-    color: '#667eea',
-    fontWeight: 'bold',
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
   },
   requestButtons: {
     flexDirection: 'row',
@@ -642,6 +718,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  friendActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  followButtonSmall: {
+    backgroundColor: 'rgba(102, 126, 234, 0.9)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followingButtonSmall: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  followButtonTextSmall: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  followingButtonTextSmall: {
+    color: 'rgba(255, 255, 255, 0.9)',
   },
 });
 

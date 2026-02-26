@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Platform, Dimensions } from 'react-native';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/services/firebase';
 import LoginScreen from '@/screens/LoginScreen';
@@ -6,11 +7,17 @@ import RegisterScreen from '@/screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import DirectMessagesScreen from '../screens/DirectMessagesScreen';
+import CombinedMessagesScreen from '../screens/CombinedMessagesScreen';
 import PostsFeedScreen from '../screens/PostsFeedScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
+import AchievementsScreen from '../screens/AchievementsScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
-type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'posts-feed' | 'create-post';
+type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isWeb = Platform.OS === 'web';
+const isTablet = screenWidth > 768;
 
 interface MessageScreenParams {
   conversationId: string;
@@ -52,7 +59,12 @@ const AuthNavigator: React.FC = () => {
   };
 
   const handleNavigateToFriends = () => {
-    setCurrentScreen('friends');
+    // Use combined screen for web/tablet, separate screens for mobile
+    if (isWeb || isTablet) {
+      setCurrentScreen('combined-messages');
+    } else {
+      setCurrentScreen('friends');
+    }
   };
 
   const handleNavigateToHome = () => {
@@ -65,6 +77,10 @@ const AuthNavigator: React.FC = () => {
 
   const handleNavigateToCreatePost = () => {
     setCurrentScreen('create-post');
+  };
+
+  const handleNavigateToAchievements = () => {
+    setCurrentScreen('achievements');
   };
 
   const handlePostCreated = () => {
@@ -89,6 +105,10 @@ const AuthNavigator: React.FC = () => {
     setCurrentScreen('home');
   };
 
+  const handleBackFromAchievements = () => {
+    setCurrentScreen('home');
+  };
+
   // Show loading screen while checking auth state
   if (authState === 'loading') {
     return null; // You can add a loading spinner here later
@@ -103,13 +123,18 @@ const AuthNavigator: React.FC = () => {
             user={user}
             onNavigateToFriends={handleNavigateToFriends}
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
-            onNavigateToCreatePost={handleNavigateToCreatePost}
-          />
+            onNavigateToCreatePost={handleNavigateToCreatePost}            onNavigateToAchievements={handleNavigateToAchievements}          />
         );
       case 'friends':
         return (
           <FriendsScreen
             onStartChat={handleStartChat}
+            onBack={handleBackFromFriends}
+          />
+        );
+      case 'combined-messages':
+        return (
+          <CombinedMessagesScreen
             onBack={handleBackFromFriends}
           />
         );
@@ -140,6 +165,14 @@ const AuthNavigator: React.FC = () => {
             onNavigateToFriends={handleNavigateToFriends}
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
             onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+          />
+        );
+      case 'achievements':
+        return (
+          <AchievementsScreen
+            user={user}
+            onBack={handleBackFromAchievements}
           />
         );
       default:
@@ -149,6 +182,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToFriends={handleNavigateToFriends}
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
             onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
           />
         );
     }
