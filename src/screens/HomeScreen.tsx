@@ -24,6 +24,7 @@ interface HomeScreenProps {
   onNavigateToPostsFeed: () => void;
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
+  onNavigateToProfile: () => void;
 }
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ 
@@ -31,7 +32,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
   onNavigateToFriends, 
   onNavigateToPostsFeed, 
   onNavigateToCreatePost,
-  onNavigateToAchievements 
+  onNavigateToAchievements,
+  onNavigateToProfile
 }) => {
   const [activeTab, setActiveTab] = useState('home');
   const [userData, setUserData] = useState<User | null>(null);
@@ -91,6 +93,15 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
     } else if (tab === 'home') {
       // Refresh data when user returns to home tab
       onRefresh();
+    } else if (tab === 'create') {
+      // Navigate to create post
+      onNavigateToCreatePost();
+    } else if (tab === 'achievements') {
+      // Navigate to achievements
+      onNavigateToAchievements();
+    } else if (tab === 'profile') {
+      // Navigate to profile
+      onNavigateToProfile();
     }
   };
 
@@ -220,7 +231,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
           </ScrollView>
           
           {/* Navbar */}
-          <Navbar activeTab={activeTab} onTabPress={handleTabPress} user={user} />
+          <Navbar activeTab={activeTab} onTabPress={handleTabPress} user={userData} />
         </SafeAreaView>
       </LinearGradient>
     </View>

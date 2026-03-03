@@ -92,6 +92,45 @@ export const getPosts = (callback: (posts: Post[]) => void, limitCount = 20) => 
   );
 };
 
+// Get posts with pagination support
+export const getPostsPaginated = async (
+  limitCount = 3,
+  lastDoc?: any
+): Promise<{ posts: Post[], lastVisible: any, hasMore: boolean }> => {
+  try {
+    let q = query(
+      collection(db, 'posts'),
+      orderBy('createdAt', 'desc'),
+      limit(limitCount)
+    );
+
+    if (lastDoc) {
+      q = query(
+        collection(db, 'posts'),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastDoc),
+        limit(limitCount)
+      );
+    }
+
+    const snapshot = await getDocs(q);
+    const posts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate() || new Date(),
+      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+    })) as Post[];
+
+    const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+    const hasMore = snapshot.docs.length === limitCount;
+
+    return { posts, lastVisible, hasMore };
+  } catch (error) {
+    console.error('Error fetching paginated posts:', error);
+    return { posts: [], lastVisible: null, hasMore: false };
+  }
+};
+
 export const getUserPosts = (userId: string, callback: (posts: Post[]) => void) => {
   return onSnapshot(
     query(

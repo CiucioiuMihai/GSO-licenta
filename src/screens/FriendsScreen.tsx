@@ -8,6 +8,9 @@ import {
   Alert,
   TextInput,
   ScrollView,
+  Platform,
+  StatusBar,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -414,6 +417,9 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
+      {Platform.OS === 'android' && (
+        <StatusBar backgroundColor="#667eea" barStyle="light-content" />
+      )}
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={styles.header}>
@@ -532,9 +538,9 @@ const styles = StyleSheet.create({
   },
   tab: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    borderRadius: Platform.OS === 'android' ? 16 : 20,
+    paddingHorizontal: Platform.OS === 'android' ? 12 : 16,
+    paddingVertical: Platform.OS === 'android' ? 6 : 8,
     marginRight: 10,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -543,7 +549,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   tabText: {
-    fontSize: 14,
+    fontSize: Platform.OS === 'android' ? 13 : 14,
     fontWeight: '500',
     color: '#fff',
   },
@@ -561,20 +567,36 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 12,
+    borderRadius: Platform.OS === 'android' ? 8 : 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: Platform.OS === 'android' ? 14 : 12,
     fontSize: 16,
     color: '#fff',
     marginRight: 10,
-    borderWidth: 1,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+    ...Platform.select({
+      android: {
+        elevation: 1,
+      },
+    }),
   },
   searchButton: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: Platform.OS === 'android' ? 8 : 12,
     paddingHorizontal: 16,
     justifyContent: 'center',
+    ...Platform.select({
+      android: {
+        elevation: 2,
+      },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+      },
+    }),
   },
   searchButtonText: {
     fontSize: 18,
@@ -589,21 +611,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 12,
-    padding: 15,
+    borderRadius: Platform.OS === 'android' ? 8 : 12,
+    padding: Platform.OS === 'android' ? 16 : 15,
     marginBottom: 10,
-    borderWidth: 1,
+    marginHorizontal: Platform.OS === 'android' ? 2 : 0,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+    ...Platform.select({
+      android: {
+        elevation: 2,
+      },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+    }),
   },
   conversationItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 12,
-    padding: 15,
+    borderRadius: Platform.OS === 'android' ? 8 : 12,
+    padding: Platform.OS === 'android' ? 16 : 15,
     marginBottom: 10,
-    borderWidth: 1,
+    marginHorizontal: Platform.OS === 'android' ? 2 : 0,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+    ...Platform.select({
+      android: {
+        elevation: 2,
+      },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+    }),
   },
   requestItem: {
     flexDirection: 'row',

@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Post, Comment, User } from '@/types';
 import { 
   getPosts, 
+  getPostsPaginated,
   likePost, 
   getUserData, 
   addComment, 
@@ -49,6 +50,10 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
   const [postsWithUsers, setPostsWithUsers] = useState<(Post & { user: User })[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
+  const [visiblePosts, setVisiblePosts] = useState<Set<string>>(new Set());
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [postComments, setPostComments] = useState<Comment[]>([]);
   const [commentsWithUsers, setCommentsWithUsers] = useState<(Comment & { user: User })[]>([]);
@@ -83,11 +88,19 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
     
     const setupPosts = async () => {
       if (activeFilter === 'all' || (activeFilter === 'tag' && !tagFilter.trim())) {
-        // Only use real-time listener for 'all' posts
-        unsubscribe = getPosts((newPosts) => {
-          setPosts(newPosts);
-          loadUsersForPosts(newPosts);
-        }, 20);
+        // Use paginated fetch for 'all' posts with infinite scroll
+        setLoading(true);
+        try {
+          const result = await getPostsPaginated(3);
+          console.log(`📥 Loaded ${result.posts.length} posts (initial load)`);
+          setPosts(result.posts);
+          setLastVisibleDoc(result.lastVisible);
+          setHasMore(result.hasMore);
+          loadUsersForPosts(result.posts);
+        } catch (error) {
+          console.error('Error fetching initial posts:', error);
+          setLoading(false);
+        }
       } else {
         // For filtered views, use static fetch
         setLoading(true);
@@ -123,6 +136,65 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
       }
     };
   }, [currentUser, activeFilter, tagFilter]);
+
+  // Load more posts for infinite scroll
+  const loadMorePosts = async () => {
+    if (isLoadingMore || !hasMore || activeFilter !== 'all') return;
+
+    setIsLoadingMore(true);
+    try {
+      const result = await getPostsPaginated(3, lastVisibleDoc);
+      console.log(`📥 Loaded ${result.posts.length} more posts (page ${Math.floor(posts.length / 3) + 1})`);
+      
+      // Filter out any posts that already exist (prevent duplicates)
+      const existingPostIds = new Set(posts.map(p => p.id));
+      const newPosts = result.posts.filter(p => !existingPostIds.has(p.id));
+      
+      setPosts(prevPosts => [...prevPosts, ...newPosts]);
+      setLastVisibleDoc(result.lastVisible);
+      setHasMore(result.hasMore);
+      
+      // Load users for new posts
+      const newPostsWithUserData = await Promise.all(
+        newPosts.map(async (post) => {
+          const user = await getUserData(post.userId);
+          return { ...post, user: user! };
+        })
+      );
+      
+      setPostsWithUsers(prevPosts => {
+        const existingIds = new Set(prevPosts.map(p => p.id));
+        const uniqueNewPosts = newPostsWithUserData.filter(p => p.user && !existingIds.has(p.id));
+        return [...prevPosts, ...uniqueNewPosts];
+      });
+    } catch (error) {
+      console.error('Error loading more posts:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Track viewable items for logging
+  const onViewableItemsChanged = useRef(({ viewableItems, changed }: any) => {
+    changed.forEach((item: any) => {
+      if (item.isViewable) {
+        console.log(`👁️ Post ${item.item.id.substring(0, 8)}... is now VISIBLE`);
+        setVisiblePosts(prev => new Set(prev).add(item.item.id));
+      } else {
+        console.log(`👋 Post ${item.item.id.substring(0, 8)}... is now HIDDEN`);
+        setVisiblePosts(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(item.item.id);
+          return newSet;
+        });
+      }
+    });
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50, // Log when 50% of item is visible
+    minimumViewTime: 300, // Wait 300ms before logging
+  }).current;
 
   const loadUsersForPosts = async (posts: Post[]) => {
     try {
@@ -217,9 +289,26 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
     setCommentText('');
   };
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    // The useEffect will handle reloading through the listener
+    
+    if (activeFilter === 'all') {
+      // Reset pagination and reload
+      try {
+        const result = await getPostsPaginated(3);
+        console.log(`🔄 Refreshed feed - Loaded ${result.posts.length} posts`);
+        setPosts(result.posts);
+        setLastVisibleDoc(result.lastVisible);
+        setHasMore(result.hasMore);
+        loadUsersForPosts(result.posts);
+      } catch (error) {
+        console.error('Error refreshing posts:', error);
+        setRefreshing(false);
+      }
+    } else {
+      // The useEffect will handle reloading for filtered views
+      setRefreshing(false);
+    }
   };
 
   const handleTagSearch = () => {
@@ -588,6 +677,21 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
             refreshing={refreshing}
             onRefresh={onRefresh}
             showsVerticalScrollIndicator={false}
+            onEndReached={loadMorePosts}
+            onEndReachedThreshold={0.5}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            ListFooterComponent={
+              isLoadingMore ? (
+                <View style={styles.loadingMoreContainer}>
+                  <Text style={styles.loadingMoreText}>Loading more posts...</Text>
+                </View>
+              ) : !hasMore && postsWithUsers.length > 0 ? (
+                <View style={styles.endOfFeedContainer}>
+                  <Text style={styles.endOfFeedText}>You've reached the end! 🎉</Text>
+                </View>
+              ) : null
+            }
             ListEmptyComponent={
               !loading ? (
                 <View style={styles.emptyContainer}>
@@ -1126,6 +1230,26 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 11,
     fontWeight: '600',
+  },
+  loadingMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingMoreText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  endOfFeedContainer: {
+    paddingVertical: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endOfFeedText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 14,
+    fontStyle: 'italic',
   },
 });
 

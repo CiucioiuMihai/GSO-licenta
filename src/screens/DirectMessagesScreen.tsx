@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  StatusBar,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -188,10 +190,14 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
+      {Platform.OS === 'android' && (
+        <StatusBar backgroundColor="#667eea" barStyle="light-content" />
+      )}
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           style={styles.keyboardAvoid}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior='padding'
+          keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
         >
           {/* Header */}
           <View style={styles.header}>
@@ -360,10 +366,21 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   messageBubble: {
-    borderRadius: 18,
+    borderRadius: Platform.OS === 'android' ? 16 : 18,
     paddingHorizontal: 16,
     paddingVertical: 10,
     maxWidth: '100%',
+    ...Platform.select({
+      android: {
+        elevation: 1,
+      },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+      },
+    }),
   },
   ownMessageBubble: {
     backgroundColor: '#fff',
@@ -397,17 +414,22 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: Platform.OS === 'android' ? 8 : 12,
-    borderTopWidth: 1,
+    paddingHorizontal: Platform.OS === 'android' ? 12 : 16,
+    paddingVertical: Platform.OS === 'android' ? 10 : 12,
+    paddingBottom: Platform.OS === 'android' ? 10 : 12,
+    borderTopWidth: Platform.OS === 'android' ? 0 : 1,
     borderTopColor: 'rgba(255, 255, 255, 0.2)',
     backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    ...Platform.select({
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   messageInput: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 24,
+    borderRadius: Platform.OS === 'android' ? 20 : 24,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
@@ -415,27 +437,38 @@ const styles = StyleSheet.create({
     color: '#333',
     maxHeight: 100,
     marginRight: 8,
-    borderWidth: 1,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+    ...Platform.select({
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   sendButton: {
     backgroundColor: '#667eea',
-    borderRadius: 24,
-    width: 48,
-    height: 48,
+    borderRadius: Platform.OS === 'android' ? 28 : 24,
+    width: Platform.OS === 'android' ? 56 : 48,
+    height: Platform.OS === 'android' ? 56 : 48,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    ...Platform.select({
+      android: {
+        elevation: 6,
+      },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+    }),
   },
   sendButtonDisabled: {
     opacity: 0.5,
   },
   sendButtonText: {
-    fontSize: 20,
+    fontSize: Platform.OS === 'android' ? 24 : 20,
     color: '#fff',
     fontWeight: '600',
   },

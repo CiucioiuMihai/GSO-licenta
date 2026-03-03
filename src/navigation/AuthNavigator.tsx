@@ -11,9 +11,10 @@ import CombinedMessagesScreen from '../screens/CombinedMessagesScreen';
 import PostsFeedScreen from '../screens/PostsFeedScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
 import AchievementsScreen from '../screens/AchievementsScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
-type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements';
+type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements' | 'profile';
 
 const { width: screenWidth } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
@@ -83,6 +84,10 @@ const AuthNavigator: React.FC = () => {
     setCurrentScreen('achievements');
   };
 
+  const handleNavigateToProfile = () => {
+    setCurrentScreen('profile');
+  };
+
   const handlePostCreated = () => {
     setCurrentScreen('posts-feed');
   };
@@ -109,6 +114,10 @@ const AuthNavigator: React.FC = () => {
     setCurrentScreen('home');
   };
 
+  const handleBackFromProfile = () => {
+    setCurrentScreen('home');
+  };
+
   // Show loading screen while checking auth state
   if (authState === 'loading') {
     return null; // You can add a loading spinner here later
@@ -123,7 +132,9 @@ const AuthNavigator: React.FC = () => {
             user={user}
             onNavigateToFriends={handleNavigateToFriends}
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
-            onNavigateToCreatePost={handleNavigateToCreatePost}            onNavigateToAchievements={handleNavigateToAchievements}          />
+            onNavigateToCreatePost={handleNavigateToCreatePost}            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
+          />
         );
       case 'friends':
         return (
@@ -166,6 +177,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
           />
         );
       case 'achievements':
@@ -173,6 +185,12 @@ const AuthNavigator: React.FC = () => {
           <AchievementsScreen
             user={user}
             onBack={handleBackFromAchievements}
+          />
+        );
+      case 'profile':
+        return (
+          <ProfileScreen
+            onBack={handleBackFromProfile}
           />
         );
       default:
@@ -183,6 +201,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
           />
         );
     }

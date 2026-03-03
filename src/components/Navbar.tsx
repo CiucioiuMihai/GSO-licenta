@@ -5,13 +5,14 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
-  Alert,
 } from 'react-native';
+import { User } from '@/types';
+import { calculateLevel } from '@/utils/gamification';
 
 interface NavbarProps {
   activeTab: string;
   onTabPress: (tab: string) => void;
-  user: any;
+  user: User | null;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
@@ -25,17 +26,6 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
 
   const handleTabPress = (tabId: string) => {
     if (tabId === activeTab) return;
-    
-    if (tabId === 'create') {
-      Alert.alert('Coming Soon', 'Create post feature in development!');
-      return;
-    }
-    
-    if (tabId === 'achievements' || tabId === 'profile') {
-      Alert.alert('Coming Soon', `${tabId.charAt(0).toUpperCase() + tabId.slice(1)} feature in development!`);
-      return;
-    }
-    
     onTabPress(tabId);
   };
 
@@ -88,7 +78,9 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
           <Text style={styles.webUserName}>
             {user?.displayName || 'User'}
           </Text>
-          <Text style={styles.webUserLevel}>Level 1</Text>
+          <Text style={styles.webUserLevel}>
+            Level {user?.level || calculateLevel(user?.xp || 0)}
+          </Text>
         </View>
       )}
     </View>

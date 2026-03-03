@@ -10,9 +10,9 @@ Backend:Firebase
 -DM-uri intre useri-done
 -Postari-comment-uri la postari;tag-uri la postari;-done 
 -Base64 pt imagini-done
--Feed personalizat
--Sistem de nivele pentru useri-trebe afisate(exista logica deja)
--Daily quest,achievements/badges
+-Feed personalizat-done
+-Sistem de nivele pentru useri-trebe afisate(exista logica deja)-done
+-achievements/badges-done
 -Offline Mode
 -Notificari
 -Admin mode
