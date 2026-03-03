@@ -13,6 +13,7 @@ import {
   ScrollView,
   Platform,
   Pressable,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -67,6 +68,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [tagFilter, setTagFilter] = useState('');
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
+  const [likingPosts, setLikingPosts] = useState<Set<string>>(new Set());
+  const [likingComments, setLikingComments] = useState<Set<string>>(new Set());
   const currentUser = auth.currentUser;
 
   // Fetch current user data
@@ -229,18 +232,46 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
   };
 
   const handleLikePost = async (postId: string) => {
+    // Prevent spam clicking
+    if (likingPosts.has(postId)) return;
+    
+    setLikingPosts(prev => new Set(prev).add(postId));
+    
     try {
       await likePost(postId);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to like post');
+    } finally {
+      // Remove from set after a delay to prevent rapid re-clicking
+      setTimeout(() => {
+        setLikingPosts(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(postId);
+          return newSet;
+        });
+      }, 500);
     }
   };
 
   const handleLikeComment = async (commentId: string) => {
+    // Prevent spam clicking
+    if (likingComments.has(commentId)) return;
+    
+    setLikingComments(prev => new Set(prev).add(commentId));
+    
     try {
       await likeComment(commentId);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to like comment');
+    } finally {
+      // Remove from set after a delay to prevent rapid re-clicking
+      setTimeout(() => {
+        setLikingComments(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(commentId);
+          return newSet;
+        });
+      }, 500);
     }
   };
 
@@ -545,54 +576,60 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
     >
       <LinearGradient colors={['#667eea', '#764ba2']} style={styles.modalContainer}>
         <SafeAreaView style={styles.modalSafeArea}>
-          {/* Modal Header */}
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={closeComments}>
-              <Text style={styles.modalCloseText}>✕</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Comments</Text>
-            <View style={styles.modalHeaderSpacer} />
-          </View>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          >
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={closeComments}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Comments</Text>
+              <View style={styles.modalHeaderSpacer} />
+            </View>
 
-          {/* Comments List */}
-          <FlatList
-            data={commentsWithUsers}
-            renderItem={renderComment}
-            keyExtractor={(item) => item.id}
-            style={styles.commentsList}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <Text style={styles.emptyComments}>No comments yet. Be the first to comment!</Text>
-            }
-          />
+            {/* Comments List */}
+            <FlatList
+              data={commentsWithUsers}
+              renderItem={renderComment}
+              keyExtractor={(item) => item.id}
+              style={styles.commentsList}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <Text style={styles.emptyComments}>No comments yet. Be the first to comment!</Text>
+              }
+            />
 
-          {/* Add Comment */}
-          <View style={styles.addCommentContainer}>
-            <Image
-              source={{
-                uri: currentUser?.photoURL || 'https://via.placeholder.com/30'
-              }}
-              style={styles.commentAvatar}
-            />
-            <TextInput
-              style={styles.commentInput}
-              value={commentText}
-              onChangeText={setCommentText}
-              placeholder="Add a comment..."
-              placeholderTextColor="rgba(255, 255, 255, 0.7)"
-              multiline
-              maxLength={500}
-            />
-            <TouchableOpacity
-              style={[styles.sendCommentButton, !commentText.trim() && styles.sendCommentDisabled]}
-              onPress={handleAddComment}
-              disabled={!commentText.trim() || loadingComment}
-            >
-              <Text style={styles.sendCommentText}>
-                {loadingComment ? '...' : '➤'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+            {/* Add Comment */}
+            <View style={styles.addCommentContainer}>
+              <Image
+                source={{
+                  uri: currentUser?.photoURL || 'https://via.placeholder.com/30'
+                }}
+                style={styles.commentAvatar}
+              />
+              <TextInput
+                style={styles.commentInput}
+                value={commentText}
+                onChangeText={setCommentText}
+                placeholder="Add a comment..."
+                placeholderTextColor="rgba(255, 255, 255, 0.7)"
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity
+                style={[styles.sendCommentButton, !commentText.trim() && styles.sendCommentDisabled]}
+                onPress={handleAddComment}
+                disabled={!commentText.trim() || loadingComment}
+              >
+                <Text style={styles.sendCommentText}>
+                  {loadingComment ? '...' : '➤'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </LinearGradient>
     </Modal>
@@ -924,6 +961,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalSafeArea: {
+    flex: 1,
+  },
+  keyboardAvoidingView: {
     flex: 1,
   },
   modalHeader: {

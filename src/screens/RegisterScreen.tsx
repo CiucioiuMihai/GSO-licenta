@@ -170,6 +170,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
                 </View>
 
@@ -182,6 +184,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
                 </View>
 

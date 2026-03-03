@@ -91,6 +91,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
                 </View>
 
