@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: '#fff',
-    borderWidth: 1,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   button: {

@@ -36,17 +36,33 @@ import {
   getUserDataWithCounts
 } from '@/services/postsService';
 import { auth } from '@/services/firebase';
+import Navbar from '@/components/Navbar';
 
 interface PostsFeedScreenProps {
   onCreatePost: () => void;
   onBack: () => void;
+  onNavigateToHome: () => void;
+  onNavigateToFriends: () => void;
+  onNavigateToPostsFeed: () => void;
+  onNavigateToCreatePost: () => void;
+  onNavigateToAchievements: () => void;
+  onNavigateToProfile: () => void;
 }
 
 const { width } = Dimensions.get('window');
 
 type FilterType = 'all' | 'following' | 'friends' | 'tag';
 
-const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack }) => {
+const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ 
+  onCreatePost, 
+  onBack,
+  onNavigateToHome,
+  onNavigateToFriends,
+  onNavigateToPostsFeed,
+  onNavigateToCreatePost,
+  onNavigateToAchievements,
+  onNavigateToProfile
+}) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [postsWithUsers, setPostsWithUsers] = useState<(Post & { user: User })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +86,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
   const [likingPosts, setLikingPosts] = useState<Set<string>>(new Set());
   const [likingComments, setLikingComments] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState('explore');
   const currentUser = auth.currentUser;
 
   // Fetch current user data
@@ -233,13 +250,56 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
 
   const handleLikePost = async (postId: string) => {
     // Prevent spam clicking
-    if (likingPosts.has(postId)) return;
+    if (likingPosts.has(postId) || !currentUser) return;
     
     setLikingPosts(prev => new Set(prev).add(postId));
+    
+    // Save previous state for potential rollback
+    const previousPosts = posts;
+    const previousPostsWithUsers = postsWithUsers;
+    
+    // Optimistically update the UI
+    const updatePosts = (postsList: Post[]) => {
+      return postsList.map(post => {
+        if (post.id === postId) {
+          const isLiked = post.likedBy?.includes(currentUser.uid);
+          return {
+            ...post,
+            likes: isLiked ? post.likes - 1 : post.likes + 1,
+            likedBy: isLiked 
+              ? post.likedBy.filter(id => id !== currentUser.uid)
+              : [...(post.likedBy || []), currentUser.uid]
+          };
+        }
+        return post;
+      });
+    };
+    
+    const updatePostsWithUsers = (postsList: (Post & { user: User })[]) => {
+      return postsList.map(post => {
+        if (post.id === postId) {
+          const isLiked = post.likedBy?.includes(currentUser.uid);
+          return {
+            ...post,
+            likes: isLiked ? post.likes - 1 : post.likes + 1,
+            likedBy: isLiked 
+              ? post.likedBy.filter(id => id !== currentUser.uid)
+              : [...(post.likedBy || []), currentUser.uid]
+          };
+        }
+        return post;
+      });
+    };
+    
+    setPosts(updatePosts(posts));
+    setPostsWithUsers(updatePostsWithUsers(postsWithUsers));
     
     try {
       await likePost(postId);
     } catch (error: any) {
+      // Revert to previous state on error
+      setPosts(previousPosts);
+      setPostsWithUsers(previousPostsWithUsers);
       Alert.alert('Error', error.message || 'Failed to like post');
     } finally {
       // Remove from set after a delay to prevent rapid re-clicking
@@ -255,13 +315,56 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
 
   const handleLikeComment = async (commentId: string) => {
     // Prevent spam clicking
-    if (likingComments.has(commentId)) return;
+    if (likingComments.has(commentId) || !currentUser) return;
     
     setLikingComments(prev => new Set(prev).add(commentId));
+    
+    // Save previous state for potential rollback
+    const previousComments = postComments;
+    const previousCommentsWithUsers = commentsWithUsers;
+    
+    // Optimistically update the UI
+    const updateComments = (commentsList: Comment[]) => {
+      return commentsList.map(comment => {
+        if (comment.id === commentId) {
+          const isLiked = comment.likedBy?.includes(currentUser.uid);
+          return {
+            ...comment,
+            likes: isLiked ? comment.likes - 1 : comment.likes + 1,
+            likedBy: isLiked 
+              ? comment.likedBy.filter(id => id !== currentUser.uid)
+              : [...(comment.likedBy || []), currentUser.uid]
+          };
+        }
+        return comment;
+      });
+    };
+    
+    const updateCommentsWithUsers = (commentsList: (Comment & { user: User })[]) => {
+      return commentsList.map(comment => {
+        if (comment.id === commentId) {
+          const isLiked = comment.likedBy?.includes(currentUser.uid);
+          return {
+            ...comment,
+            likes: isLiked ? comment.likes - 1 : comment.likes + 1,
+            likedBy: isLiked 
+              ? comment.likedBy.filter(id => id !== currentUser.uid)
+              : [...(comment.likedBy || []), currentUser.uid]
+          };
+        }
+        return comment;
+      });
+    };
+    
+    setPostComments(updateComments(postComments));
+    setCommentsWithUsers(updateCommentsWithUsers(commentsWithUsers));
     
     try {
       await likeComment(commentId);
     } catch (error: any) {
+      // Revert to previous state on error
+      setPostComments(previousComments);
+      setCommentsWithUsers(previousCommentsWithUsers);
       Alert.alert('Error', error.message || 'Failed to like comment');
     } finally {
       // Remove from set after a delay to prevent rapid re-clicking
@@ -298,6 +401,18 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
     try {
       await addComment(selectedPost.id, commentText.trim());
       setCommentText('');
+      
+      // Update the comment count in local state
+      setPosts(posts => posts.map(post => 
+        post.id === selectedPost.id 
+          ? { ...post, comments: post.comments + 1 }
+          : post
+      ));
+      setPostsWithUsers(posts => posts.map(post => 
+        post.id === selectedPost.id 
+          ? { ...post, comments: post.comments + 1 }
+          : post
+      ));
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to add comment');
     } finally {
@@ -410,6 +525,21 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
 
   const isFriend = (userId: string): boolean => {
     return currentUserData?.friends?.includes(userId) || false;
+  };
+
+  const handleTabPress = (tab: string) => {
+    setActiveTab(tab);
+    if (tab === 'explore') {
+      onNavigateToFriends();
+    } else if (tab === 'home') {
+      onNavigateToHome();
+    } else if (tab === 'create') {
+      onNavigateToCreatePost();
+    } else if (tab === 'achievements') {
+      onNavigateToAchievements();
+    } else if (tab === 'profile') {
+      onNavigateToProfile();
+    }
   };
 
   const renderPost = ({ item }: { item: Post & { user: User } }) => {
@@ -637,7 +767,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onBack}>
@@ -801,6 +931,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ onCreatePost, onBack 
             </LinearGradient>
           </View>
         </Modal>
+        
+        {/* Navbar */}
+        <Navbar activeTab={activeTab} onTabPress={handleTabPress} user={currentUserData} />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -812,6 +945,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    paddingTop: Platform.OS === 'web' ? 70 : 0,
   },
   header: {
     flexDirection: 'row',

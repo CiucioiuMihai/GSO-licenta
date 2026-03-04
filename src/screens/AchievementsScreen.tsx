@@ -8,6 +8,7 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,13 +27,19 @@ import {
   getLevelDefinition
 } from '@/utils/gamification';
 import { getUserDataWithCounts } from '@/services/postsService';
-import { applyRetroactiveXP } from '@/services/levelService';
 import { db } from '@/services/firebase';
 import { doc } from 'firebase/firestore';
+import Navbar from '@/components/Navbar';
 
 interface AchievementsScreenProps {
   user: FirebaseUser | null;
   onBack: () => void;
+  onNavigateToHome: () => void;
+  onNavigateToFriends: () => void;
+  onNavigateToPostsFeed: () => void;
+  onNavigateToCreatePost: () => void;
+  onNavigateToAchievements: () => void;
+  onNavigateToProfile: () => void;
 }
 
 type TabType = 'all' | 'social' | 'content' | 'engagement' | 'special';
@@ -40,12 +47,21 @@ type TabType = 'all' | 'social' | 'content' | 'engagement' | 'special';
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 32;
 
-const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ user, onBack }) => {
+const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ 
+  user, 
+  onBack,
+  onNavigateToHome,
+  onNavigateToFriends,
+  onNavigateToPostsFeed,
+  onNavigateToCreatePost,
+  onNavigateToAchievements,
+  onNavigateToProfile
+}) => {
   const [activeTab, setActiveTab] = useState<TabType>('all');
+  const [navbarTab, setNavbarTab] = useState('achievements');
   const [scaleAnim] = useState(new Animated.Value(1));
   const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [applyingRetroactiveXP, setApplyingRetroactiveXP] = useState(false);
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -60,48 +76,8 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ user, onBack })
             totalLikes: userDataWithCounts?.totalLikes
           });
           setUserData(userDataWithCounts);
-          
-          // Always check and apply retroactive XP when visiting achievements page
-          const hasActivity = userDataWithCounts && 
-            ((userDataWithCounts.totalPosts || 0) > 0 || 
-             (userDataWithCounts.totalFriends || 0) > 0 ||
-             (userDataWithCounts.totalLikes || 0) > 0);
-             
-          console.log('AchievementsScreen - Checking retroactive XP:', {
-            hasActivity,
-            totalPosts: userDataWithCounts?.totalPosts,
-            totalFriends: userDataWithCounts?.totalFriends,
-            totalLikes: userDataWithCounts?.totalLikes,
-            currentXP: userDataWithCounts?.xp,
-            currentLevel: userDataWithCounts?.level
-          });
-          
-          if (hasActivity) {
-            console.log('AchievementsScreen - Starting automatic retroactive XP check...');
-            setApplyingRetroactiveXP(true);
-            try {
-              const retroResult = await applyRetroactiveXP(user.uid);
-              console.log('AchievementsScreen - Retroactive XP result:', retroResult);
-              if (retroResult.retroactiveXP > 0 || retroResult.leveledUp) {
-                console.log('AchievementsScreen - Refreshing user data after XP application...');
-                // Refresh user data to show updated XP and level
-                const updatedUserData = await getUserDataWithCounts(user.uid);
-                console.log('AchievementsScreen - Updated user data:', {
-                  xp: updatedUserData?.xp,
-                  level: updatedUserData?.level,
-                  previousLevel: retroResult.previousLevel,
-                  newLevel: retroResult.newLevel
-                });
-                setUserData(updatedUserData);
-              }
-            } catch (error) {
-              console.error('Error applying retroactive XP:', error);
-            } finally {
-              setApplyingRetroactiveXP(false);
-            }
-          }
         } catch (error) {
-          console.error('Error fetching user data:', error);
+          console.error('Error loading user data:', error);
         } finally {
           setLoading(false);
         }
@@ -124,14 +100,7 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ user, onBack })
               <View style={styles.headerStats} />
             </View>
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>
-                {applyingRetroactiveXP ? 'Calculating your XP...' : 'Loading achievements...'}
-              </Text>
-              {applyingRetroactiveXP && (
-                <Text style={styles.loadingSubtext}>
-                  Awarding XP for your past activity! 🎉
-                </Text>
-              )}
+              <Text style={styles.loadingText}>Loading achievements...</Text>
             </View>
           </SafeAreaView>
         </LinearGradient>
@@ -208,6 +177,21 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ user, onBack })
       Animated.timing(scaleAnim, { duration: 100, toValue: 0.95, useNativeDriver: true }),
       Animated.timing(scaleAnim, { duration: 100, toValue: 1, useNativeDriver: true }),
     ]).start();
+  };
+
+  const handleNavbarTabPress = (tab: string) => {
+    setNavbarTab(tab);
+    if (tab === 'explore') {
+      onNavigateToFriends();
+    } else if (tab === 'home') {
+      onNavigateToHome();
+    } else if (tab === 'create') {
+      onNavigateToCreatePost();
+    } else if (tab === 'achievements') {
+      // Already on achievements screen
+    } else if (tab === 'profile') {
+      onNavigateToProfile();
+    }
   };
 
   const renderLevelCard = () => (
@@ -325,7 +309,7 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ user, onBack })
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#667eea', '#764ba2']} style={styles.gradient}>
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -377,6 +361,9 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ user, onBack })
               />
             </View>
           </ScrollView>
+          
+          {/* Navbar */}
+          <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={userData} />
         </SafeAreaView>
       </LinearGradient>
     </View>
@@ -392,6 +379,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    paddingTop: Platform.OS === 'web' ? 70 : 0,
   },
   header: {
     flexDirection: 'row',

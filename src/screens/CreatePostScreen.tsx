@@ -14,17 +14,34 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { createPost, getTrendingTags, searchTags } from '@/services/postsService';
-import { Tag } from '@/types';
+import { createPost, getTrendingTags, searchTags, getUserDataWithCounts } from '@/services/postsService';
+import { Tag, User } from '@/types';
+import { auth } from '@/services/firebase';
+import Navbar from '@/components/Navbar';
 
 interface CreatePostScreenProps {
   onBack: () => void;
   onPostCreated: () => void;
+  onNavigateToHome: () => void;
+  onNavigateToFriends: () => void;
+  onNavigateToPostsFeed: () => void;
+  onNavigateToCreatePost: () => void;
+  onNavigateToAchievements: () => void;
+  onNavigateToProfile: () => void;
 }
 
 const { width } = Dimensions.get('window');
 
-const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ onBack, onPostCreated }) => {
+const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ 
+  onBack, 
+  onPostCreated,
+  onNavigateToHome,
+  onNavigateToFriends,
+  onNavigateToPostsFeed,
+  onNavigateToCreatePost,
+  onNavigateToAchievements,
+  onNavigateToProfile
+}) => {
   const [content, setContent] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
@@ -33,6 +50,9 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ onBack, onPostCreat
   const [images, setImages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [navbarTab, setNavbarTab] = useState('create');
+  const [currentUserData, setCurrentUserData] = useState<User | null>(null);
+  const currentUser = auth.currentUser;
 
   useEffect(() => {
     // Load trending tags
@@ -68,6 +88,17 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ onBack, onPostCreat
     const timeoutId = setTimeout(searchForTags, 300);
     return () => clearTimeout(timeoutId);
   }, [tagInput]);
+
+  useEffect(() => {
+    // Fetch current user data
+    const fetchCurrentUser = async () => {
+      if (currentUser) {
+        const userData = await getUserDataWithCounts(currentUser.uid);
+        setCurrentUserData(userData);
+      }
+    };
+    fetchCurrentUser();
+  }, [currentUser]);
 
   const addTag = (tagName: string) => {
     const cleanTag = tagName.trim().toLowerCase();
@@ -137,9 +168,8 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ onBack, onPostCreat
     setLoading(true);
     try {
       await createPost(content.trim(), tags, images);
-      Alert.alert('Success', 'Post created successfully!', [
-        { text: 'OK', onPress: () => onPostCreated() }
-      ]);
+      Alert.alert('Success', 'Post created successfully!');
+      onPostCreated(); // Navigate immediately after post is created
     } catch (error: any) {
       console.error('Error creating post:', error);
       Alert.alert('Error', error.message || 'Failed to create post');
@@ -166,9 +196,24 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ onBack, onPostCreat
     </View>
   );
 
+  const handleNavbarTabPress = (tab: string) => {
+    setNavbarTab(tab);
+    if (tab === 'explore') {
+      onNavigateToFriends();
+    } else if (tab === 'home') {
+      onNavigateToHome();
+    } else if (tab === 'create') {
+      // Already on create post screen
+    } else if (tab === 'achievements') {
+      onNavigateToAchievements();
+    } else if (tab === 'profile') {
+      onNavigateToProfile();
+    }
+  };
+
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={onBack}>
@@ -282,6 +327,9 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ onBack, onPostCreat
           {/* Trending Tags */}
           {renderTrendingTags()}
         </ScrollView>
+        
+        {/* Navbar */}
+        <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={currentUserData} />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -293,6 +341,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    paddingTop: Platform.OS === 'web' ? 70 : 0,
   },
   header: {
     flexDirection: 'row',
@@ -389,7 +438,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     marginVertical: 10,
-    borderWidth: 1,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     borderStyle: 'dashed',
   },

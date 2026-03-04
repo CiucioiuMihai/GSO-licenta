@@ -197,25 +197,55 @@ export const handleFriendAdded = async (userId: string, user: User) => {
  * Handle daily login
  */
 export const handleDailyLogin = async (userId: string, user: User) => {
-  const today = new Date().toDateString();
-  const lastLogin = user.lastLoginDate ? new Date(user.lastLoginDate).toDateString() : null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
+  const todayString = today.toDateString();
+  
+  // Handle lastLoginDate which might be a Firestore Timestamp
+  let lastLoginDate: Date | null = null;
+  if (user.lastLoginDate) {
+    // If it's a Firestore Timestamp, convert it
+    if (typeof user.lastLoginDate === 'object' && 'toDate' in user.lastLoginDate) {
+      lastLoginDate = (user.lastLoginDate as any).toDate();
+    } else if (user.lastLoginDate instanceof Date) {
+      lastLoginDate = user.lastLoginDate;
+    } else {
+      // Try to parse it
+      lastLoginDate = new Date(user.lastLoginDate);
+    }
+  }
+  
+  const lastLoginString = lastLoginDate ? lastLoginDate.toDateString() : null;
+  
+  console.log('handleDailyLogin - Date check:', {
+    userId,
+    todayString,
+    lastLoginString,
+    alreadyLoggedInToday: lastLoginString === todayString
+  });
   
   // Only award XP if this is the first login today
-  if (lastLogin === today) {
+  if (lastLoginString === todayString) {
+    console.log('handleDailyLogin - User already logged in today, skipping XP award');
     return { xpAwarded: 0, leveledUp: false, newAchievements: [] };
   }
   
+  console.log('handleDailyLogin - Awarding daily login XP');
   const result = await awardXP(userId, 'daily_login');
   
   // Update login streak
   const userRef = doc(db, 'users', userId);
-  const lastLoginDate = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(0, 0, 0, 0);
   
   let newStreak = 1;
-  if (lastLoginDate && lastLoginDate.toDateString() === yesterday.toDateString()) {
-    newStreak = (user.dailyStreak || 0) + 1;
+  if (lastLoginDate) {
+    const lastLoginCopy = new Date(lastLoginDate);
+    lastLoginCopy.setHours(0, 0, 0, 0);
+    if (lastLoginCopy.toDateString() === yesterday.toDateString()) {
+      newStreak = (user.dailyStreak || 0) + 1;
+    }
   }
   
   await updateDoc(userRef, {
@@ -223,6 +253,8 @@ export const handleDailyLogin = async (userId: string, user: User) => {
     dailyStreak: newStreak,
     totalDaysActive: increment(1)
   });
+  
+  console.log('handleDailyLogin - Updated user with new streak:', newStreak);
   
   // Check for streak-based achievements
   const updatedUser = { 
@@ -371,6 +403,20 @@ export const applyRetroactiveXP = async (userId: string): Promise<{
       totalFriends: user.totalFriends,
       totalLikes: user.totalLikes
     });
+    
+    // If retroactive XP has already been applied, skip this process
+    if (user.retroactiveXPApplied === true) {
+      console.log('applyRetroactiveXP - Retroactive XP already applied, skipping');
+      return {
+        previousXP,
+        retroactiveXP: 0,
+        newXP: previousXP,
+        previousLevel,
+        newLevel: previousLevel,
+        leveledUp: false,
+        newAchievements: []
+      };
+    }
     
     // Calculate what the retroactive XP should be
     const calculatedRetroactiveXP = calculateRetroactiveXP(user);

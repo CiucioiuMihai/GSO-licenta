@@ -366,68 +366,55 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   messageBubble: {
-    borderRadius: Platform.OS === 'android' ? 16 : 18,
+    borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 10,
     maxWidth: '100%',
-    ...Platform.select({
-      android: {
-        elevation: 1,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
-      },
-    }),
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   ownMessageBubble: {
-    backgroundColor: '#fff',
+    // Same background as other messages for consistency
   },
   otherMessageBubble: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    // Same background as own messages for consistency
   },
   messageText: {
     fontSize: 16,
     lineHeight: 20,
+    color: '#fff',
   },
   ownMessageText: {
-    color: '#667eea',
+    // Same color for consistency
   },
   otherMessageText: {
-    color: '#fff',
+    // Same color for consistency
   },
   messageTime: {
     fontSize: 12,
     marginTop: 4,
-  },
-  ownMessageTime: {
-    color: '#999',
+    color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'right',
   },
+  ownMessageTime: {
+    // Same styling for consistency
+  },
   otherMessageTime: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    // Same styling for consistency
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: Platform.OS === 'android' ? 12 : 16,
-    paddingVertical: Platform.OS === 'android' ? 10 : 12,
-    paddingBottom: Platform.OS === 'android' ? 10 : 12,
-    borderTopWidth: Platform.OS === 'android' ? 0 : 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 12,
+    borderTopWidth: 0,
     borderTopColor: 'rgba(255, 255, 255, 0.2)',
     backgroundColor: 'rgba(0, 0, 0, 0.1)',
-    ...Platform.select({
-      android: {
-        elevation: 8,
-      },
-    }),
   },
   messageInput: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: Platform.OS === 'android' ? 20 : 24,
+    borderRadius: 24,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
@@ -435,38 +422,21 @@ const styles = StyleSheet.create({
     color: '#333',
     maxHeight: 100,
     marginRight: 8,
-    borderWidth: Platform.OS === 'android' ? 0 : 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-    }),
+    borderWidth: 0,
   },
   sendButton: {
     backgroundColor: '#667eea',
-    borderRadius: Platform.OS === 'android' ? 28 : 24,
-    width: Platform.OS === 'android' ? 56 : 48,
-    height: Platform.OS === 'android' ? 56 : 48,
+    borderRadius: 24,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      android: {
-        elevation: 6,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-    }),
   },
   sendButtonDisabled: {
     opacity: 0.5,
   },
   sendButtonText: {
-    fontSize: Platform.OS === 'android' ? 24 : 20,
+    fontSize: 20,
     color: '#fff',
     fontWeight: '600',
   },

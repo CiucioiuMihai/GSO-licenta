@@ -23,14 +23,29 @@ import { getUserPosts } from '@/services/postsService';
 import { User, Post } from '@/types';
 import { calculateLevel } from '@/utils/gamification';
 import { ACHIEVEMENT_DEFINITIONS } from '@/types';
+import Navbar from '@/components/Navbar';
 
 interface ProfileScreenProps {
   onBack: () => void;
+  onNavigateToHome: () => void;
+  onNavigateToFriends: () => void;
+  onNavigateToPostsFeed: () => void;
+  onNavigateToCreatePost: () => void;
+  onNavigateToAchievements: () => void;
+  onNavigateToProfile: () => void;
 }
 
 const { width } = Dimensions.get('window');
 
-const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
+const ProfileScreen: React.FC<ProfileScreenProps> = ({ 
+  onBack,
+  onNavigateToHome,
+  onNavigateToFriends,
+  onNavigateToPostsFeed,
+  onNavigateToCreatePost,
+  onNavigateToAchievements,
+  onNavigateToProfile
+}) => {
   const [userData, setUserData] = useState<User | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +53,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
   const [tempBio, setTempBio] = useState('');
   const [tempProfilePicture, setTempProfilePicture] = useState('');
   const [saving, setSaving] = useState(false);
+  const [navbarTab, setNavbarTab] = useState('profile');
   const currentUser = auth.currentUser;
 
   // Fetch user data
@@ -80,6 +96,21 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
       }
     };
   }, [fetchUserData, fetchUserPosts]);
+
+  const handleNavbarTabPress = (tab: string) => {
+    setNavbarTab(tab);
+    if (tab === 'explore') {
+      onNavigateToFriends();
+    } else if (tab === 'home') {
+      onNavigateToHome();
+    } else if (tab === 'create') {
+      onNavigateToCreatePost();
+    } else if (tab === 'achievements') {
+      onNavigateToAchievements();
+    } else if (tab === 'profile') {
+      // Already on profile screen
+    }
+  };
 
   const pickProfileImage = async () => {
     try {
@@ -197,7 +228,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onBack}>
@@ -355,6 +386,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
             )}
           </View>
         </ScrollView>
+        
+        {/* Navbar */}
+        <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={userData} />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -366,6 +400,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    paddingTop: Platform.OS === 'web' ? 70 : 0,
   },
   loadingContainer: {
     flex: 1,

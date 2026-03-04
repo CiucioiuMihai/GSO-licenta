@@ -32,9 +32,13 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
   const isWeb = Platform.OS === 'web';
 
   return (
-    <View style={[styles.navbar, isWeb ? styles.navbarWeb : styles.navbarMobile]}>
-      {/* Web: Show app info on left, nav in center, user info on right */}
-      {isWeb && (
+    <>
+      {/* Black background below navbar for mobile */}
+      {!isWeb && <View style={styles.navbarBackground} />}
+      
+      <View style={[styles.navbar, isWeb ? styles.navbarWeb : styles.navbarMobile]}>
+        {/* Web: Show app info on left, nav in center, user info on right */}
+        {isWeb && (
         <View style={styles.webLeft}>
           <Text style={styles.webLogo}>🎮 GSO</Text>
           <Text style={styles.webSubtitle}>Gamified Social</Text>
@@ -47,7 +51,6 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
             key={item.id}
             style={[
               styles.navItem,
-              activeTab === item.id && styles.navItemActive,
               isWeb && styles.navItemWeb,
             ]}
             onPress={() => handleTabPress(item.id)}
@@ -59,11 +62,11 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
             ]}>
               {item.icon}
             </Text>
-            {(isWeb || activeTab === item.id) && (
+            {isWeb && (
               <Text style={[
                 styles.navLabel,
                 activeTab === item.id && styles.navLabelActive,
-                isWeb && styles.navLabelWeb,
+                styles.navLabelWeb,
               ]}>
                 {item.label}
               </Text>
@@ -84,18 +87,23 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
         </View>
       )}
     </View>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
   navbar: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderColor: 'rgba(0, 0, 0, 0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: '#000',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  navbarBackground: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    backgroundColor: '#000',
+    zIndex: 999,
   },
   navbarWeb: {
     position: 'absolute',
@@ -106,17 +114,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    borderBottomWidth: 1,
+    borderBottomWidth: Platform.OS === 'android' ? 0 : 1,
     zIndex: 1000,
   },
   navbarMobile: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 50,
     left: 0,
     right: 0,
-    height: 80,
-    paddingBottom: 10,
-    borderTopWidth: 1,
+    height: 50,
+    paddingBottom: 0,
+    borderTopWidth: 0,
     zIndex: 1000,
   },
   webLeft: {
@@ -132,7 +140,7 @@ const styles = StyleSheet.create({
   },
   webSubtitle: {
     fontSize: 16,
-    color: '#666',
+    color: '#999',
     fontWeight: '500',
   },
   webRight: {
@@ -142,11 +150,11 @@ const styles = StyleSheet.create({
   webUserName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#fff',
   },
   webUserLevel: {
     fontSize: 14,
-    color: '#667eea',
+    color: '#999',
     fontWeight: '500',
   },
   navItems: {
@@ -158,47 +166,49 @@ const styles = StyleSheet.create({
   },
   navItemsMobile: {
     flex: 1,
-    justifyContent: 'space-around',
+    justifyContent: 'space-evenly',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingTop: 10,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   navItem: {
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    minWidth: 60,
+    justifyContent: 'center',
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    flex: 1,
   },
   navItemWeb: {
     marginHorizontal: 10,
     paddingHorizontal: 16,
   },
   navItemActive: {
-    backgroundColor: '#667eea',
+    // No background for Instagram style
   },
   navIcon: {
-    fontSize: 20,
-    marginBottom: 2,
+    fontSize: 24,
+    color: '#fff',
+    opacity: 0.6,
   },
   navIconWeb: {
     fontSize: 18,
     marginBottom: 4,
+    color: '#fff',
+    opacity: 0.8,
   },
   navIconActive: {
-    // Icon remains same color
+    opacity: 1,
   },
   navLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#666',
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '500',
   },
   navLabelWeb: {
-    fontSize: 13,
-    color: '#333',
+    marginTop: 2,
   },
   navLabelActive: {
-    color: '#fff',
+    fontWeight: '700',
   },
 });
 

@@ -39,16 +39,19 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
   const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [dailyLoginChecked, setDailyLoginChecked] = useState(false);
 
-  const fetchUserData = useCallback(async () => {
+  const fetchUserData = useCallback(async (checkDailyLogin: boolean = false) => {
     if (user?.uid) {
       try {
         const userDataWithCounts = await getUserDataWithCounts(user.uid);
         setUserData(userDataWithCounts);
         
-        // Track daily login and update streak
-        if (userDataWithCounts) {
+        // Track daily login only on initial load, not on refresh
+        if (checkDailyLogin && !dailyLoginChecked && userDataWithCounts) {
+          console.log('HomeScreen - Checking daily login for first time');
           await handleDailyLogin(user.uid, userDataWithCounts);
+          setDailyLoginChecked(true);
           // Refresh user data to get updated streak and XP
           const updatedUserData = await getUserDataWithCounts(user.uid);
           setUserData(updatedUserData);
@@ -57,22 +60,22 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
         console.error('Error fetching user data:', error);
       }
     }
-  }, [user?.uid]);
+  }, [user?.uid, dailyLoginChecked]);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await fetchUserData();
+      await fetchUserData(true); // Check daily login on initial load
       setLoading(false);
     };
 
     loadData();
-  }, [fetchUserData]);
+  }, [user?.uid]); // Remove fetchUserData from dependencies to prevent loops
 
   // Pull to refresh functionality
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchUserData();
+    await fetchUserData(false); // Don't check daily login on refresh
     setRefreshing(false);
   }, [fetchUserData]);
 
@@ -118,7 +121,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#667eea', '#764ba2']} style={styles.gradient}>
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
           {/* Main Content */}
           <ScrollView 
             style={[styles.scrollView, isWeb ? styles.scrollViewWeb : styles.scrollViewMobile]}
@@ -309,7 +312,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     marginHorizontal: 5,
-    borderWidth: 1,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   statNumber: {
@@ -344,7 +347,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '48%',
     marginBottom: 10,
-    borderWidth: 1,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   actionIcon: {
@@ -368,7 +371,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 30,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   placeholderIcon: {
@@ -416,7 +419,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
     marginTop: 20,
   },

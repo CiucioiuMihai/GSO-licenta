@@ -141,6 +141,12 @@ const AuthNavigator: React.FC = () => {
           <FriendsScreen
             onStartChat={handleStartChat}
             onBack={handleBackFromFriends}
+            onNavigateToHome={handleNavigateToHome}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
           />
         );
       case 'combined-messages':
@@ -154,6 +160,12 @@ const AuthNavigator: React.FC = () => {
           <PostsFeedScreen
             onCreatePost={handleNavigateToCreatePost}
             onBack={handleBackFromPosts}
+            onNavigateToHome={handleNavigateToHome}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
           />
         );
       case 'create-post':
@@ -161,6 +173,12 @@ const AuthNavigator: React.FC = () => {
           <CreatePostScreen
             onBack={handleBackFromPosts}
             onPostCreated={handlePostCreated}
+            onNavigateToHome={handleNavigateToHome}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
           />
         );
       case 'messages':
@@ -185,12 +203,24 @@ const AuthNavigator: React.FC = () => {
           <AchievementsScreen
             user={user}
             onBack={handleBackFromAchievements}
+            onNavigateToHome={handleNavigateToHome}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
           />
         );
       case 'profile':
         return (
           <ProfileScreen
             onBack={handleBackFromProfile}
+            onNavigateToHome={handleNavigateToHome}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
           />
         );
       default:

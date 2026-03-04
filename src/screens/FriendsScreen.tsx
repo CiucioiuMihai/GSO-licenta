@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
   StatusBar,
   Pressable,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,24 +27,74 @@ import {
 import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
+import Navbar from '@/components/Navbar';
 
 interface FriendsScreenProps {
   onStartChat: (userId: string, conversationId: string) => void;
   onBack: () => void;
+  onNavigateToHome: () => void;
+  onNavigateToFriends: () => void;
+  onNavigateToPostsFeed: () => void;
+  onNavigateToCreatePost: () => void;
+  onNavigateToAchievements: () => void;
+  onNavigateToProfile: () => void;
 }
 
-type TabType = 'friends' | 'requests' | 'search' | 'conversations';
+type TabType = 'friends' | 'requests' | 'search';
 
-const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) => {
+interface FriendWithConversation extends User {
+  lastMessage?: string;
+  lastMessageAt?: Date;
+  conversationId?: string;
+  unreadCount?: number;
+}
+
+const FriendsScreen: React.FC<FriendsScreenProps> = ({ 
+  onStartChat, 
+  onBack,
+  onNavigateToHome,
+  onNavigateToFriends,
+  onNavigateToPostsFeed,
+  onNavigateToCreatePost,
+  onNavigateToAchievements,
+  onNavigateToProfile
+}) => {
   const [activeTab, setActiveTab] = useState<TabType>('friends');
+  const [navbarTab, setNavbarTab] = useState('explore');
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
   const currentUser = auth.currentUser;
+
+  // Merge friends with their conversations
+  const friendsWithConversations = useMemo<FriendWithConversation[]>(() => {
+    if (!currentUser) return [];
+    
+    return friends.map(friend => {
+      // Find conversation with this friend
+      const conversation = conversations.find(conv => 
+        conv.participants.includes(friend.id)
+      );
+      
+      if (conversation) {
+        const unreadKey = `unreadCount_${currentUser.uid}` as const;
+        return {
+          ...friend,
+          lastMessage: conversation.lastMessage,
+          lastMessageAt: conversation.lastMessageAt,
+          conversationId: conversation.id,
+          unreadCount: conversation[unreadKey] || 0,
+        };
+      }
+      
+      return friend;
+    });
+  }, [friends, conversations, currentUser]);
 
   useEffect(() => {
     loadFriends();
@@ -79,6 +130,40 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
       setFriends(userFriends);
     } catch (error) {
       console.error('Error loading friends:', error);
+    }
+  };
+
+  const handleSearchInputChange = async (text: string) => {
+    setSearchQuery(text);
+    
+    // Show suggestions when user types at least 2 characters
+    if (text.trim().length >= 2) {
+      try {
+        const searchLower = text.toLowerCase();
+        
+        // Search for users with matching display names
+        const nameQuery = query(
+          collection(db, 'users'),
+          where('displayName', '>=', text),
+          where('displayName', '<=', text + '\uf8ff')
+        );
+        
+        const snapshot = await getDocs(nameQuery);
+        const suggestions: User[] = [];
+        
+        snapshot.docs.forEach(doc => {
+          if (doc.id !== auth.currentUser?.uid) {
+            suggestions.push({ id: doc.id, ...doc.data() } as User);
+          }
+        });
+        
+        setSearchSuggestions(suggestions.slice(0, 5)); // Limit to 5 suggestions
+      } catch (error) {
+        console.error('Error fetching suggestions:', error);
+        setSearchSuggestions([]);
+      }
+    } else {
+      setSearchSuggestions([]);
     }
   };
 
@@ -246,36 +331,22 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
     onStartChat(friend.id, conversationId);
   };
 
-  const handleOpenConversation = async (conversation: Conversation) => {
-    const currentUserId = auth.currentUser?.uid;
-    if (!currentUserId) return;
-
-    const otherUserId = conversation.participants.find(id => id !== currentUserId);
-    if (otherUserId) {
-      onStartChat(otherUserId, conversation.id);
+  const handleNavbarTabPress = (tab: string) => {
+    setNavbarTab(tab);
+    if (tab === 'explore') {
+      // Already on friends/messages screen
+    } else if (tab === 'home') {
+      onNavigateToHome();
+    } else if (tab === 'create') {
+      onNavigateToCreatePost();
+    } else if (tab === 'achievements') {
+      onNavigateToAchievements();
+    } else if (tab === 'profile') {
+      onNavigateToProfile();
     }
   };
 
-  const getOtherUserName = async (conversation: Conversation): Promise<string> => {
-    const currentUserId = auth.currentUser?.uid;
-    const otherUserId = conversation.participants.find(id => id !== currentUserId);
-    
-    if (!otherUserId) return 'Unknown User';
-
-    try {
-      const userDoc = await getDocs(query(collection(db, 'users'), where('id', '==', otherUserId)));
-      if (!userDoc.empty) {
-        const userData = userDoc.docs[0].data() as User;
-        return userData.displayName;
-      }
-    } catch (error) {
-      console.error('Error getting user name:', error);
-    }
-    
-    return 'Unknown User';
-  };
-
-  const renderFriend = ({ item }: { item: User }) => {
+  const renderFriend = ({ item }: { item: FriendWithConversation }) => {
     const userIsFollowed = isFollowing(item.id);
     
     return (
@@ -287,10 +358,17 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
             </Text>
           </View>
           <View style={styles.friendDetails}>
-            <Text style={styles.friendName}>{item.displayName}</Text>
-            <Text style={styles.friendStatus}>
-              {item.isOnline ? '🟢 Online' : '⚪ Offline'}
-            </Text>
+            <View style={styles.friendNameRow}>
+              <Text style={styles.friendName}>{item.displayName}</Text>
+              <Text style={styles.friendStatus}>
+                {item.isOnline ? '🟢 Online' : '⚪ Offline'}
+              </Text>
+            </View>
+            {item.lastMessage && (
+              <Text style={styles.lastMessage} numberOfLines={1}>
+                {item.lastMessage}
+              </Text>
+            )}
           </View>
         </View>
         <View style={styles.friendActions}>
@@ -308,6 +386,11 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
           >
             <Text style={styles.chatButtonText}>💬</Text>
           </TouchableOpacity>
+          {(item.unreadCount ?? 0) > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadText}>{item.unreadCount}</Text>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -379,38 +462,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
     );
   };
 
-  const renderConversation = ({ item }: { item: Conversation }) => {
-    const currentUserId = auth.currentUser?.uid;
-    const unreadCount = currentUserId ? item[`unreadCount_${currentUserId}`] : 0;
-    
-    return (
-      <TouchableOpacity
-        style={styles.conversationItem}
-        onPress={() => handleOpenConversation(item)}
-      >
-        <View style={styles.friendInfo}>
-          <View style={styles.friendAvatar}>
-            <Text style={styles.friendAvatarText}>💬</Text>
-          </View>
-          <View style={styles.friendDetails}>
-            <Text style={styles.friendName}>Chat</Text>
-            <Text style={styles.lastMessage} numberOfLines={1}>
-              {item.lastMessage}
-            </Text>
-          </View>
-        </View>
-        {unreadCount > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>{unreadCount}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
   const tabs = [
-    { id: 'conversations' as TabType, label: 'Chats', count: conversations.length },
-    { id: 'friends' as TabType, label: 'Friends', count: friends.length },
+    { id: 'friends' as TabType, label: 'Friends & Messages', count: friendsWithConversations.length },
     { id: 'requests' as TabType, label: 'Requests', count: friendRequests.length },
     { id: 'search' as TabType, label: 'Search', count: 0 },
   ];
@@ -420,7 +473,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
       {Platform.OS === 'android' && (
         <StatusBar backgroundColor="#667eea" barStyle="light-content" />
       )}
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={onBack}>
@@ -440,42 +493,71 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
             >
               <Text style={[styles.tabText, activeTab === tab.id && styles.activeTabText]}>
                 {tab.label}
-                {tab.count > 0 && ` (${tab.count})`}
+                {tab.count > 0 ? ` (${tab.count})` : ''}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
         {/* Content */}
-        <View style={styles.content}>
+        <KeyboardAvoidingView 
+          style={styles.content}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'position'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 120 : -150}
+        >
           {activeTab === 'search' && (
-            <View style={styles.searchContainer}>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search users by name..."
-                placeholderTextColor="rgba(255, 255, 255, 0.6)"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onSubmitEditing={handleSearch}
-              />
-              <TouchableOpacity
-                style={styles.searchButton}
-                onPress={handleSearch}
-                disabled={loading}
-              >
-                <Text style={styles.searchButtonText}>
-                  {loading ? '⏳' : '🔍'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <>
+              <View style={styles.searchContainer}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search users by name..."
+                  placeholderTextColor="rgba(255, 255, 255, 0.6)"
+                  value={searchQuery}
+                  onChangeText={handleSearchInputChange}
+                  onSubmitEditing={handleSearch}
+                />
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  onPress={handleSearch}
+                  disabled={loading}
+                >
+                  <Text style={styles.searchButtonText}>
+                    {loading ? '⏳' : '🔍'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
+              {/* Search Suggestions */}
+              {searchSuggestions.length > 0 && searchQuery.length >= 2 ? (
+                <ScrollView style={styles.suggestionsContainer} nestedScrollEnabled>
+                  {searchSuggestions.map((suggestion) => (
+                    <TouchableOpacity
+                      key={suggestion.id}
+                      style={styles.suggestionItem}
+                      onPress={() => {
+                        setSearchQuery(suggestion.displayName);
+                        setSearchSuggestions([]);
+                        handleSearch();
+                      }}
+                    >
+                      <View style={styles.friendAvatar}>
+                        <Text style={styles.friendAvatarText}>
+                          {suggestion.displayName.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={styles.suggestionText}>{suggestion.displayName}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : null}
+            </>
           )}
 
           <FlatList
             data={
-              activeTab === 'friends' ? friends :
+              activeTab === 'friends' ? friendsWithConversations :
               activeTab === 'requests' ? friendRequests :
-              activeTab === 'search' ? searchResults :
-              conversations
+              searchResults
             }
             keyExtractor={(item: any) => item.id}
             renderItem={(props: any) => {
@@ -483,17 +565,20 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ onStartChat, onBack }) =>
                 return renderFriend(props);
               } else if (activeTab === 'requests') {
                 return renderFriendRequest(props);
-              } else if (activeTab === 'search') {
-                return renderSearchResult(props);
               } else {
-                return renderConversation(props);
+                return renderSearchResult(props);
               }
             }}
             style={styles.list}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps='handled'
+            keyboardDismissMode='on-drag'
           />
-        </View>
+        </KeyboardAvoidingView>
+        
+        {/* Navbar */}
+        <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={currentUserData} />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -505,6 +590,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    paddingTop: Platform.OS === 'web' ? 70 : 0,
   },
   header: {
     flexDirection: 'row',
@@ -535,21 +621,21 @@ const styles = StyleSheet.create({
   tabs: {
     paddingHorizontal: 20,
     paddingVertical: 10,
+    backgroundColor: 'transparent',
   },
   tab: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: Platform.OS === 'android' ? 16 : 20,
-    paddingHorizontal: Platform.OS === 'android' ? 12 : 16,
-    paddingVertical: Platform.OS === 'android' ? 6 : 8,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     marginRight: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 0,
   },
   activeTab: {
     backgroundColor: '#fff',
   },
   tabText: {
-    fontSize: Platform.OS === 'android' ? 13 : 14,
+    fontSize: 14,
     fontWeight: '500',
     color: '#fff',
   },
@@ -567,89 +653,55 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: Platform.OS === 'android' ? 8 : 12,
+    borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'android' ? 14 : 12,
+    paddingVertical: 12,
     fontSize: 16,
     color: '#fff',
     marginRight: 10,
-    borderWidth: Platform.OS === 'android' ? 0 : 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    ...Platform.select({
-      android: {
-        elevation: 1,
-      },
-    }),
+    borderWidth: 0,
   },
   searchButton: {
     backgroundColor: '#fff',
-    borderRadius: Platform.OS === 'android' ? 8 : 12,
+    borderRadius: 12,
     paddingHorizontal: 16,
     justifyContent: 'center',
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
-      },
-    }),
   },
   searchButtonText: {
     fontSize: 18,
+  },
+  suggestionsContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 12,
+    marginBottom: 10,
+    maxHeight: 150,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  suggestionText: {
+    fontSize: 16,
+    color: '#fff',
+    marginLeft: 12,
   },
   list: {
     flex: 1,
   },
   listContent: {
-    paddingBottom: 20,
+    paddingBottom: 55,
   },
   friendItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: Platform.OS === 'android' ? 8 : 12,
-    padding: Platform.OS === 'android' ? 16 : 15,
+    borderRadius: 12,
+    padding: 15,
     marginBottom: 10,
-    marginHorizontal: Platform.OS === 'android' ? 2 : 0,
-    borderWidth: Platform.OS === 'android' ? 0 : 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      },
-    }),
-  },
-  conversationItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: Platform.OS === 'android' ? 8 : 12,
-    padding: Platform.OS === 'android' ? 16 : 15,
-    marginBottom: 10,
-    marginHorizontal: Platform.OS === 'android' ? 2 : 0,
-    borderWidth: Platform.OS === 'android' ? 0 : 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      },
-    }),
+    borderWidth: 0,
   },
   requestItem: {
     flexDirection: 'row',
@@ -658,8 +710,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 15,
     marginBottom: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 0,
   },
   friendInfo: {
     flex: 1,
@@ -683,19 +734,26 @@ const styles = StyleSheet.create({
   friendDetails: {
     flex: 1,
   },
+  friendNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   friendName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
-    marginBottom: 4,
   },
   friendStatus: {
-    fontSize: 14,
+    fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
   },
   lastMessage: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   chatButton: {
     backgroundColor: '#fff',
