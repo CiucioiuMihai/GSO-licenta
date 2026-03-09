@@ -27,7 +27,7 @@ interface CreatePostScreenProps {
   onNavigateToPostsFeed: () => void;
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
-  onNavigateToProfile: () => void;
+  onNavigateToProfile: (userId?: string) => void;
 }
 
 const { width } = Dimensions.get('window');

@@ -23,8 +23,10 @@ import {
   rejectFriendRequest,
   sendFriendRequest,
   getUserConversations,
+  startBotConversation,
 } from '@/services/friendsService';
 import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
+import { BOT_USER_ID } from '@/services/chatbotService';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
 import Navbar from '@/components/Navbar';
@@ -37,7 +39,7 @@ interface FriendsScreenProps {
   onNavigateToPostsFeed: () => void;
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
-  onNavigateToProfile: () => void;
+  onNavigateToProfile: (userId?: string) => void;
 }
 
 type TabType = 'friends' | 'requests' | 'search';
@@ -346,12 +348,25 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
     }
   };
 
+  const handleStartBotChat = async () => {
+    try {
+      const conversationId = await startBotConversation(currentUserData);
+      onStartChat(BOT_USER_ID, conversationId);
+    } catch (error) {
+      console.error('Error starting bot conversation:', error);
+      Alert.alert('Error', 'Failed to start bot conversation');
+    }
+  };
+
   const renderFriend = ({ item }: { item: FriendWithConversation }) => {
     const userIsFollowed = isFollowing(item.id);
     
     return (
       <View style={styles.friendItem}>
-        <View style={styles.friendInfo}>
+        <TouchableOpacity 
+          style={styles.friendInfo}
+          onPress={() => onNavigateToProfile(item.id)}
+        >
           <View style={styles.friendAvatar}>
             <Text style={styles.friendAvatarText}>
               {item.displayName.charAt(0).toUpperCase()}
@@ -370,7 +385,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
               </Text>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
         <View style={styles.friendActions}>
           <TouchableOpacity
             style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
@@ -431,7 +446,10 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
     
     return (
       <View style={styles.friendItem}>
-        <View style={styles.friendInfo}>
+        <TouchableOpacity 
+          style={styles.friendInfo}
+          onPress={() => onNavigateToProfile(item.id)}
+        >
           <View style={styles.friendAvatar}>
             <Text style={styles.friendAvatarText}>
               {item.displayName.charAt(0).toUpperCase()}
@@ -441,7 +459,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
             <Text style={styles.friendName}>{item.displayName}</Text>
             <Text style={styles.friendStatus}>{item.email}</Text>
           </View>
-        </View>
+        </TouchableOpacity>
         <View style={styles.friendActions}>
           <TouchableOpacity
             style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
@@ -560,6 +578,22 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
               searchResults
             }
             keyExtractor={(item: any) => item.id}
+            ListHeaderComponent={
+              activeTab === 'friends' ? (
+                <TouchableOpacity
+                  style={styles.botChatButton}
+                  onPress={handleStartBotChat}
+                >
+                  <View style={styles.botIconContainer}>
+                    <Text style={styles.botIcon}>🤖</Text>
+                  </View>
+                  <View style={styles.botChatContent}>
+                    <Text style={styles.botChatTitle}>Chat with GSO Assistant</Text>
+                    <Text style={styles.botChatSubtitle}>Get help and tips for using the app</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : null
+            }
             renderItem={(props: any) => {
               if (activeTab === 'friends') {
                 return renderFriend(props);
@@ -693,6 +727,41 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 55,
+  },
+  botChatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(102, 126, 234, 0.4)',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+  },
+  botIconContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  botIcon: {
+    fontSize: 28,
+  },
+  botChatContent: {
+    flex: 1,
+  },
+  botChatTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 3,
+  },
+  botChatSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.85)',
   },
   friendItem: {
     flexDirection: 'row',

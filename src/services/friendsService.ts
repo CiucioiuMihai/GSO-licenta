@@ -368,3 +368,107 @@ export const markMessagesAsRead = async (conversationId: string): Promise<void> 
 
   await Promise.all(updatePromises);
 };
+
+// Bot-specific message handling
+import { BOT_USER_ID, getBotResponse, getTypingDelay, getWelcomeMessage } from './chatbotService';
+
+/**
+ * Send a message and get automated bot response if messaging the bot
+ */
+export const sendMessageWithBotResponse = async (
+  toUserId: string, 
+  message: string,
+  userData?: User | null
+): Promise<void> => {
+  // Send the user's message first
+  await sendDirectMessage(toUserId, message);
+  
+  // If messaging the bot, generate and send a response
+  if (toUserId === BOT_USER_ID) {
+    // Add a small delay to simulate the bot "thinking"
+    const typingDelay = getTypingDelay(message.length);
+    
+    setTimeout(async () => {
+      try {
+        // Get AI-generated response
+        const botResponse = await getBotResponse(message, userData);
+        
+        // Send bot's response
+        await sendBotMessage(botResponse);
+      } catch (error) {
+        console.error('Error generating bot response:', error);
+        // Send fallback message
+        await sendBotMessage("I'm having trouble processing that. Could you try asking in a different way? 🤖");
+      }
+    }, typingDelay);
+  }
+};
+
+/**
+ * Send a message from the bot to the current user
+ */
+export const sendBotMessage = async (message: string): Promise<void> => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Not authenticated');
+
+  // Create conversation ID with bot
+  const participantIds = [currentUser.uid, BOT_USER_ID].sort();
+  const conversationId = participantIds.join('_');
+
+  // Check if conversation exists, create if not
+  const conversationRef = doc(db, 'conversations', conversationId);
+  const conversationDoc = await getDoc(conversationRef);
+
+  if (!conversationDoc.exists()) {
+    const newConversation = {
+      participants: participantIds,
+      lastMessage: message,
+      lastMessageAt: new Date(),
+      [`unreadCount_${currentUser.uid}`]: 1,
+      [`unreadCount_${BOT_USER_ID}`]: 0,
+    };
+    
+    await setDoc(conversationRef, newConversation);
+  } else {
+    // Update existing conversation
+    await updateDoc(conversationRef, {
+      lastMessage: message,
+      lastMessageAt: new Date(),
+      [`unreadCount_${currentUser.uid}`]: (conversationDoc.data()?.[`unreadCount_${currentUser.uid}`] || 0) + 1,
+    });
+  }
+
+  // Add the bot's message
+  const directMessage: Omit<DirectMessage, 'id'> = {
+    conversationId,
+    fromUserId: BOT_USER_ID,
+    toUserId: currentUser.uid,
+    message,
+    read: false,
+    createdAt: new Date(),
+  };
+
+  await addDoc(collection(db, 'directMessages'), directMessage);
+};
+
+/**
+ * Initialize a conversation with the bot (send welcome message)
+ */
+export const startBotConversation = async (userData?: User | null): Promise<string> => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Not authenticated');
+
+  const participantIds = [currentUser.uid, BOT_USER_ID].sort();
+  const conversationId = participantIds.join('_');
+
+  // Check if conversation already exists
+  const conversationDoc = await getDoc(doc(db, 'conversations', conversationId));
+  
+  // If new conversation, send welcome message
+  if (!conversationDoc.exists()) {
+    const welcomeMsg = getWelcomeMessage(userData);
+    await sendBotMessage(welcomeMsg);
+  }
+
+  return conversationId;
+};

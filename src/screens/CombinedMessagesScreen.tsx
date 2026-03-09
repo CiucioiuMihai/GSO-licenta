@@ -23,10 +23,12 @@ import {
   getUserConversations,
   sendDirectMessage, 
   getConversationMessages, 
-  markMessagesAsRead 
+  markMessagesAsRead,
+  sendMessageWithBotResponse
 } from '@/services/friendsService';
 import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
 import { offlineService } from '@/services/offlineService';
+import { BOT_USER_ID, BOT_USER, isBotMessage } from '@/services/chatbotService';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
 
@@ -128,6 +130,11 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
     const otherUserId = getOtherUserId(conversation);
     if (!otherUserId) return 'Unknown User';
 
+    // Check if it's the bot
+    if (otherUserId === BOT_USER_ID) {
+      return BOT_USER.displayName; // 'GSO Assistant'
+    }
+
     try {
       const userDoc = await getDoc(doc(db, 'users', otherUserId));
       if (userDoc.exists()) {
@@ -146,9 +153,14 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
     
     // Get other user's info
     try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (userDoc.exists()) {
-        setOtherUser({ id: userDoc.id, ...userDoc.data() } as User);
+      // Check if it's the bot
+      if (userId === BOT_USER_ID) {
+        setOtherUser(BOT_USER);
+      } else {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          setOtherUser({ id: userDoc.id, ...userDoc.data() } as User);
+        }
       }
     } catch (error) {
       console.error('Error fetching other user:', error);
@@ -160,19 +172,30 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
 
     setLoading(true);
     try {
-      await offlineService.sendDirectMessage(
-        currentUser?.uid || '',
-        selectedUserId,
-        newMessage.trim()
-      );
+      // Check if messaging the bot
+      if (selectedUserId === BOT_USER_ID) {
+        // Send message and get bot response
+        await sendMessageWithBotResponse(selectedUserId, newMessage.trim(), currentUserData);
+      } else {
+        // Use offline service for regular users
+        await offlineService.sendDirectMessage(
+          currentUser?.uid || '',
+          selectedUserId,
+          newMessage.trim()
+        );
+      }
       setNewMessage('');
     } catch (error: any) {
       console.error('Error sending message:', error);
-      Alert.alert(
-        'Message Queued', 
-        'Your message will be sent when you reconnect to the internet.',
-        [{ text: 'OK' }]
-      );
+      if (selectedUserId === BOT_USER_ID) {
+        Alert.alert('Error', 'Failed to send message to bot. Please try again.');
+      } else {
+        Alert.alert(
+          'Message Queued', 
+          'Your message will be sent when you reconnect to the internet.',
+          [{ text: 'OK' }]
+        );
+      }
       setNewMessage('');
     } finally {
       setLoading(false);
@@ -281,6 +304,17 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
     return currentUserData?.friends?.includes(userId) || false;
   };
 
+  const handleStartBotChat = async () => {
+    try {
+      const { startBotConversation } = await import('@/services/friendsService');
+      const conversationId = await startBotConversation(currentUserData);
+      handleStartChat(BOT_USER_ID, conversationId);
+    } catch (error) {
+      console.error('Error starting bot conversation:', error);
+      Alert.alert('Error', 'Failed to start bot conversation');
+    }
+  };
+
   const renderLeftSidebar = () => (
     <View style={styles.sidebar}>
       <LinearGradient colors={['#667eea', '#764ba2']} style={styles.sidebarGradient}>
@@ -337,6 +371,22 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
             searchResults
           }
           keyExtractor={(item: any) => item.id}
+          ListHeaderComponent={
+            activeTab === 'conversations' ? (
+              <TouchableOpacity
+                style={[styles.botChatButton, selectedUserId === BOT_USER_ID && styles.selectedListItem]}
+                onPress={handleStartBotChat}
+              >
+                <View style={styles.botIconContainer}>
+                  <Text style={styles.botIcon}>🤖</Text>
+                </View>
+                <View style={styles.listItemContent}>
+                  <Text style={styles.botChatTitle}>Chat with GSO Assistant</Text>
+                  <Text style={styles.botChatSubtitle}>Get help and tips for using the app</Text>
+                </View>
+              </TouchableOpacity>
+            ) : null
+          }
           renderItem={({ item }) => {
             if (activeTab === 'conversations') {
               const otherUserId = getOtherUserId(item);
@@ -702,6 +752,39 @@ const styles = StyleSheet.create({
   },
   selectedListItem: {
     backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  botChatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(102, 126, 234, 0.3)',
+    marginVertical: 4,
+    marginHorizontal: 8,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  botIconContainer: {
+    marginRight: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  botIcon: {
+    fontSize: 24,
+  },
+  botChatTitle: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  botChatSubtitle: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 12,
+    marginTop: 2,
   },
   listItemContent: {
     flex: 1,

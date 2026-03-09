@@ -448,6 +448,33 @@ export const likeComment = async (commentId: string): Promise<void> => {
   }
 };
 
+export const likeReply = async (replyId: string): Promise<void> => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Not authenticated');
+
+  const replyRef = doc(db, 'replies', replyId);
+  const replyDoc = await getDoc(replyRef);
+  
+  if (!replyDoc.exists()) throw new Error('Reply not found');
+  
+  const replyData = replyDoc.data() as Reply;
+  const isLiked = replyData.likedBy.includes(currentUser.uid);
+
+  if (isLiked) {
+    // Unlike
+    await updateDoc(replyRef, {
+      likes: increment(-1),
+      likedBy: arrayRemove(currentUser.uid)
+    });
+  } else {
+    // Like
+    await updateDoc(replyRef, {
+      likes: increment(1),
+      likedBy: arrayUnion(currentUser.uid)
+    });
+  }
+};
+
 export const addReply = async (commentId: string, text: string): Promise<void> => {
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Not authenticated');
@@ -711,41 +738,47 @@ export const getUserDataWithCounts = async (userId: string): Promise<User | null
       userData.followers = userData.followers || [];
       userData.following = userData.following || [];
       
-      // Update the database with accurate counts and level if they don't match
-      const dbLevel = userDoc.data().level || 1;
-      const dbDailyStreak = userDoc.data().dailyStreak || 0;
-      const needsUpdate = userData.totalPosts !== (userDoc.data().totalPosts || 0) ||
-                         userData.totalLikes !== (userDoc.data().totalLikes || 0) ||
-                         userData.totalComments !== (userDoc.data().totalComments || 0) ||
-                         dbLevel !== calculatedLevel ||
-                         (userData.dailyStreak && dbDailyStreak !== userData.dailyStreak);
+      // Only update the database if this is the current user
+      const currentUser = auth.currentUser;
+      const isOwnProfile = currentUser && currentUser.uid === userId;
       
-      if (needsUpdate) {
-        console.log('getUserDataWithCounts - Updating user data:', {
-          totalPosts: userData.totalPosts,
-          totalLikes: userData.totalLikes,
-          totalComments: userData.totalComments,
-          xp: userData.xp,
-          oldLevel: dbLevel,
-          newLevel: calculatedLevel,
-          dailyStreak: userData.dailyStreak
-        });
+      if (isOwnProfile) {
+        // Update the database with accurate counts and level if they don't match
+        const dbLevel = userDoc.data().level || 1;
+        const dbDailyStreak = userDoc.data().dailyStreak || 0;
+        const needsUpdate = userData.totalPosts !== (userDoc.data().totalPosts || 0) ||
+                           userData.totalLikes !== (userDoc.data().totalLikes || 0) ||
+                           userData.totalComments !== (userDoc.data().totalComments || 0) ||
+                           dbLevel !== calculatedLevel ||
+                           (userData.dailyStreak && dbDailyStreak !== userData.dailyStreak);
         
-        const updateData: any = {
-          totalPosts: userData.totalPosts,
-          totalLikes: userData.totalLikes,
-          totalComments: userData.totalComments,
-          totalFriends: userData.totalFriends,
-          totalFollowers: userData.totalFollowers,
-          totalFollowing: userData.totalFollowing,
-          level: calculatedLevel,
-        };
-        
-        if (userData.dailyStreak && dbDailyStreak !== userData.dailyStreak) {
-          updateData.dailyStreak = userData.dailyStreak;
+        if (needsUpdate) {
+          console.log('getUserDataWithCounts - Updating user data:', {
+            totalPosts: userData.totalPosts,
+            totalLikes: userData.totalLikes,
+            totalComments: userData.totalComments,
+            xp: userData.xp,
+            oldLevel: dbLevel,
+            newLevel: calculatedLevel,
+            dailyStreak: userData.dailyStreak
+          });
+          
+          const updateData: any = {
+            totalPosts: userData.totalPosts,
+            totalLikes: userData.totalLikes,
+            totalComments: userData.totalComments,
+            totalFriends: userData.totalFriends,
+            totalFollowers: userData.totalFollowers,
+            totalFollowing: userData.totalFollowing,
+            level: calculatedLevel,
+          };
+          
+          if (userData.dailyStreak && dbDailyStreak !== userData.dailyStreak) {
+            updateData.dailyStreak = userData.dailyStreak;
+          }
+          
+          await updateDoc(doc(db, 'users', userId), updateData);
         }
-        
-        await updateDoc(doc(db, 'users', userId), updateData);
       }
       
       return userData;

@@ -13,8 +13,8 @@ Backend:Firebase
 -Feed personalizat-done
 -Sistem de nivele pentru useri-trebe afisate(exista logica deja)-done
 -achievements/badges-done
--Offline Mode
+-Offline Mode-50%(na-m testat full)
 -Notificari
 -Admin mode
--chatbot
+-chatbot-done (Google Gemini AI, works on web+android+iOS)
 titlu,descriere

@@ -511,6 +511,107 @@ export const applyRetroactiveXP = async (userId: string): Promise<{
 };
 
 /**
+ * Sync user XP based on their current stats (posts, likes, comments, friends)
+ * This recalculates XP without including daily login bonuses
+ * Should be called when loading user data to keep XP in sync with actual activity
+ */
+export const syncUserXP = async (userId: string, user: User): Promise<{
+  xpUpdated: boolean;
+  previousXP: number;
+  newXP: number;
+  previousLevel: number;
+  newLevel: number;
+  leveledUp: boolean;
+}> => {
+  try {
+    const previousXP = user.xp || 0;
+    const previousLevel = user.level || 1;
+    
+    // Calculate XP from actual activity (excluding daily logins)
+    let calculatedXP = 0;
+    
+    // XP for posts created
+    calculatedXP += (user.totalPosts || 0) * XP_REWARDS.create_post;
+    
+    // XP for likes received
+    calculatedXP += (user.totalLikes || 0) * XP_REWARDS.receive_like_post;
+    
+    // XP for comments received
+    calculatedXP += (user.totalComments || 0) * XP_REWARDS.receive_comment;
+    
+    // XP for friends added
+    calculatedXP += (user.totalFriends || user.friends?.length || 0) * XP_REWARDS.add_friend;
+    
+    // Add XP from daily logins based on totalDaysActive (if it exists)
+    // This preserves the daily login XP that was legitimately earned
+    if (user.totalDaysActive) {
+      calculatedXP += user.totalDaysActive * XP_REWARDS.daily_login;
+    }
+    
+    console.log('syncUserXP - Calculated XP breakdown:', {
+      userId,
+      posts: (user.totalPosts || 0) * XP_REWARDS.create_post,
+      likes: (user.totalLikes || 0) * XP_REWARDS.receive_like_post,
+      comments: (user.totalComments || 0) * XP_REWARDS.receive_comment,
+      friends: (user.totalFriends || user.friends?.length || 0) * XP_REWARDS.add_friend,
+      dailyLogins: (user.totalDaysActive || 0) * XP_REWARDS.daily_login,
+      total: calculatedXP
+    });
+    
+    // If calculated XP differs significantly from current XP, update it
+    const xpDifference = Math.abs(calculatedXP - previousXP);
+    const shouldUpdate = xpDifference > 0 && calculatedXP !== previousXP;
+    
+    if (shouldUpdate) {
+      const newXP = calculatedXP;
+      const newLevel = calculateLevel(newXP);
+      const leveledUp = newLevel > previousLevel;
+      
+      console.log('syncUserXP - Updating user XP:', {
+        previousXP,
+        newXP,
+        difference: newXP - previousXP,
+        previousLevel,
+        newLevel,
+        leveledUp
+      });
+      
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        xp: newXP,
+        level: newLevel
+      });
+      
+      // Check for newly unlocked achievements
+      const updatedUser = { ...user, xp: newXP, level: newLevel };
+      await checkAndUnlockAchievements(userId, updatedUser);
+      
+      return {
+        xpUpdated: true,
+        previousXP,
+        newXP,
+        previousLevel,
+        newLevel,
+        leveledUp
+      };
+    }
+    
+    console.log('syncUserXP - XP already in sync, no update needed');
+    return {
+      xpUpdated: false,
+      previousXP,
+      newXP: previousXP,
+      previousLevel,
+      newLevel: previousLevel,
+      leveledUp: false
+    };
+  } catch (error) {
+    console.error('Error syncing user XP:', error);
+    throw error;
+  }
+};
+
+/**
  * Apply retroactive XP to all users in batches
  * This should be run as a one-time migration when implementing gamification
  */

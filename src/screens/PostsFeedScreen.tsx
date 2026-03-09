@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Post, Comment, User } from '@/types';
+import { Post, Comment, User, Reply } from '@/types';
 import { 
   getPosts, 
   getPostsPaginated,
@@ -26,6 +26,7 @@ import {
   addComment, 
   getPostComments, 
   likeComment,
+  likeReply,
   addReply,
   getCommentReplies,
   getPostsFromFollowing,
@@ -46,7 +47,7 @@ interface PostsFeedScreenProps {
   onNavigateToPostsFeed: () => void;
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
-  onNavigateToProfile: () => void;
+  onNavigateToProfile: (userId?: string) => void;
 }
 
 const { width } = Dimensions.get('window');
@@ -86,7 +87,10 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
   const [likingPosts, setLikingPosts] = useState<Set<string>>(new Set());
   const [likingComments, setLikingComments] = useState<Set<string>>(new Set());
+  const [likingReplies, setLikingReplies] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState('explore');
+  const [replyingTo, setReplyingTo] = useState<(Comment & { user: User }) | null>(null);
+  const [repliesWithUsers, setRepliesWithUsers] = useState<{ [commentId: string]: (Reply & { user: User })[] }>({});
   const currentUser = auth.currentUser;
 
   // Fetch current user data
@@ -245,6 +249,25 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         })
       );
       setCommentsWithUsers(commentsWithUserData.filter(c => c.user));
+      
+      // Load replies for each comment
+      const repliesData: { [commentId: string]: (Reply & { user: User })[] } = {};
+      await Promise.all(
+        comments.map(async (comment) => {
+          if (comment.repliesCount > 0) {
+            getCommentReplies(comment.id, async (replies) => {
+              const repliesWithUserData = await Promise.all(
+                replies.map(async (reply) => {
+                  const user = await getUserData(reply.userId);
+                  return { ...reply, user: user! };
+                })
+              );
+              repliesData[comment.id] = repliesWithUserData.filter(r => r.user);
+              setRepliesWithUsers({ ...repliesData });
+            });
+          }
+        })
+      );
     });
   };
 
@@ -378,6 +401,53 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     }
   };
 
+  const handleLikeReply = async (replyId: string) => {
+    // Prevent spam clicking
+    if (likingReplies.has(replyId) || !currentUser) return;
+    
+    setLikingReplies(prev => new Set(prev).add(replyId));
+    
+    // Save previous state for potential rollback
+    const previousRepliesWithUsers = repliesWithUsers;
+    
+    // Optimistically update the UI
+    const updatedReplies = { ...repliesWithUsers };
+    Object.keys(updatedReplies).forEach(commentId => {
+      updatedReplies[commentId] = updatedReplies[commentId].map(reply => {
+        if (reply.id === replyId) {
+          const isLiked = reply.likedBy?.includes(currentUser.uid);
+          return {
+            ...reply,
+            likes: isLiked ? reply.likes - 1 : reply.likes + 1,
+            likedBy: isLiked 
+              ? reply.likedBy.filter(id => id !== currentUser.uid)
+              : [...(reply.likedBy || []), currentUser.uid]
+          };
+        }
+        return reply;
+      });
+    });
+    
+    setRepliesWithUsers(updatedReplies);
+    
+    try {
+      await likeReply(replyId);
+    } catch (error: any) {
+      // Revert to previous state on error
+      setRepliesWithUsers(previousRepliesWithUsers);
+      Alert.alert('Error', error.message || 'Failed to like reply');
+    } finally {
+      // Remove from set after a delay to prevent rapid re-clicking
+      setTimeout(() => {
+        setLikingReplies(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(replyId);
+          return newSet;
+        });
+      }, 500);
+    }
+  };
+
   const handleImagePress = (imageUri: string, images: any[], index: number) => {
     setSelectedImage(imageUri);
     setSelectedPostImages(images);
@@ -399,25 +469,41 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
 
     setLoadingComment(true);
     try {
-      await addComment(selectedPost.id, commentText.trim());
+      if (replyingTo) {
+        // Adding a reply to a comment
+        await addReply(replyingTo.id, commentText.trim());
+        setReplyingTo(null);
+      } else {
+        // Adding a comment to the post
+        await addComment(selectedPost.id, commentText.trim());
+        
+        // Update the comment count in local state
+        setPosts(posts => posts.map(post => 
+          post.id === selectedPost.id 
+            ? { ...post, comments: post.comments + 1 }
+            : post
+        ));
+        setPostsWithUsers(posts => posts.map(post => 
+          post.id === selectedPost.id 
+            ? { ...post, comments: post.comments + 1 }
+            : post
+        ));
+      }
       setCommentText('');
-      
-      // Update the comment count in local state
-      setPosts(posts => posts.map(post => 
-        post.id === selectedPost.id 
-          ? { ...post, comments: post.comments + 1 }
-          : post
-      ));
-      setPostsWithUsers(posts => posts.map(post => 
-        post.id === selectedPost.id 
-          ? { ...post, comments: post.comments + 1 }
-          : post
-      ));
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to add comment');
+      Alert.alert('Error', error.message || 'Failed to add ' + (replyingTo ? 'reply' : 'comment'));
     } finally {
       setLoadingComment(false);
     }
+  };
+
+  const handleReplyToComment = (comment: Comment & { user: User }) => {
+    setReplyingTo(comment);
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+    setCommentText('');
   };
 
   const openComments = (post: Post) => {
@@ -433,6 +519,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     setPostComments([]);
     setCommentsWithUsers([]);
     setCommentText('');
+    setReplyingTo(null);
+    setRepliesWithUsers({});
   };
 
   const onRefresh = async () => {
@@ -560,7 +648,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
           />
           <View style={styles.userInfo}>
             <View style={styles.userNameRow}>
-              <Text style={styles.username}>{item.user.displayName}</Text>
+              <TouchableOpacity onPress={() => onNavigateToProfile(item.userId)}>
+                <Text style={[styles.username, styles.clickableUsername]}>{item.user.displayName}</Text>
+              </TouchableOpacity>
               {!isOwnPost && !userIsFriend && (
                 <TouchableOpacity
                   style={[styles.followButton, userIsFollowed && styles.followingButton]}
@@ -662,37 +752,81 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     );
   };
 
-  const renderComment = ({ item }: { item: Comment & { user: User } }) => {
-    const isLiked = item.likedBy.includes(currentUser?.uid || '');
+  const renderReply = (reply: Reply & { user: User }) => {
+    const isLiked = reply.likedBy.includes(currentUser?.uid || '');
     
     return (
-      <View style={styles.commentContainer}>
+      <View key={reply.id} style={styles.replyContainer}>
         <Image
           source={{
-            uri: item.user.profilePicture || 'https://via.placeholder.com/30'
+            uri: reply.user.profilePicture || 'https://via.placeholder.com/30'
           }}
-          style={styles.commentAvatar}
+          style={styles.replyAvatar}
         />
         <View style={styles.commentContent}>
           <View style={styles.commentHeader}>
-            <Text style={styles.commentUsername}>{item.user.displayName}</Text>
-            <Text style={styles.commentTime}>{formatTime(item.createdAt)}</Text>
+            <Text style={styles.commentUsername}>{reply.user.displayName}</Text>
+            <Text style={styles.commentTime}>{formatTime(reply.createdAt)}</Text>
           </View>
-          <Text style={styles.commentText}>{item.text}</Text>
+          <Text style={styles.commentText}>{reply.text}</Text>
           <View style={styles.commentActions}>
             <TouchableOpacity
               style={[styles.commentAction, isLiked && styles.likedAction]}
-              onPress={() => handleLikeComment(item.id)}
+              onPress={() => handleLikeReply(reply.id)}
             >
               <Text style={[styles.commentActionText, isLiked && styles.likedCommentText]}>
-                {isLiked ? '❤️' : '🤍'} {item.likes}
+                {isLiked ? '❤️' : '🤍'} {reply.likes}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.commentAction}>
-              <Text style={styles.commentActionText}>Reply</Text>
             </TouchableOpacity>
           </View>
         </View>
+      </View>
+    );
+  };
+
+  const renderComment = ({ item }: { item: Comment & { user: User } }) => {
+    const isLiked = item.likedBy.includes(currentUser?.uid || '');
+    const replies = repliesWithUsers[item.id] || [];
+    
+    return (
+      <View>
+        <View style={styles.commentContainer}>
+          <Image
+            source={{
+              uri: item.user.profilePicture || 'https://via.placeholder.com/30'
+            }}
+            style={styles.commentAvatar}
+          />
+          <View style={styles.commentContent}>
+            <View style={styles.commentHeader}>
+              <Text style={styles.commentUsername}>{item.user.displayName}</Text>
+              <Text style={styles.commentTime}>{formatTime(item.createdAt)}</Text>
+            </View>
+            <Text style={styles.commentText}>{item.text}</Text>
+            <View style={styles.commentActions}>
+              <TouchableOpacity
+                style={[styles.commentAction, isLiked && styles.likedAction]}
+                onPress={() => handleLikeComment(item.id)}
+              >
+                <Text style={[styles.commentActionText, isLiked && styles.likedCommentText]}>
+                  {isLiked ? '❤️' : '🤍'} {item.likes}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.commentAction}
+                onPress={() => handleReplyToComment(item)}
+              >
+                <Text style={styles.commentActionText}>Reply {item.repliesCount > 0 ? `(${item.repliesCount})` : ''}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+        {/* Render replies with indentation */}
+        {replies.length > 0 && (
+          <View style={styles.repliesContainer}>
+            {replies.map(reply => renderReply(reply))}
+          </View>
+        )}
       </View>
     );
   };
@@ -709,7 +843,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardAvoidingView}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
           >
             {/* Modal Header */}
             <View style={styles.modalHeader}>
@@ -733,31 +867,43 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             />
 
             {/* Add Comment */}
-            <View style={styles.addCommentContainer}>
-              <Image
-                source={{
-                  uri: currentUser?.photoURL || 'https://via.placeholder.com/30'
-                }}
-                style={styles.commentAvatar}
-              />
-              <TextInput
-                style={styles.commentInput}
-                value={commentText}
-                onChangeText={setCommentText}
-                placeholder="Add a comment..."
-                placeholderTextColor="rgba(255, 255, 255, 0.7)"
-                multiline
-                maxLength={500}
-              />
-              <TouchableOpacity
-                style={[styles.sendCommentButton, !commentText.trim() && styles.sendCommentDisabled]}
-                onPress={handleAddComment}
-                disabled={!commentText.trim() || loadingComment}
-              >
-                <Text style={styles.sendCommentText}>
-                  {loadingComment ? '...' : '➤'}
-                </Text>
-              </TouchableOpacity>
+            <View>
+              {replyingTo && (
+                <View style={styles.replyingToContainer}>
+                  <Text style={styles.replyingToText}>
+                    Replying to {replyingTo.user.displayName}
+                  </Text>
+                  <TouchableOpacity onPress={cancelReply}>
+                    <Text style={styles.cancelReplyText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              <View style={styles.addCommentContainer}>
+                <Image
+                  source={{
+                    uri: currentUser?.photoURL || 'https://via.placeholder.com/30'
+                  }}
+                  style={styles.commentAvatar}
+                />
+                <TextInput
+                  style={styles.commentInput}
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  placeholder={replyingTo ? "Write a reply..." : "Add a comment..."}
+                  placeholderTextColor="rgba(255, 255, 255, 0.7)"
+                  multiline
+                  maxLength={500}
+                />
+                <TouchableOpacity
+                  style={[styles.sendCommentButton, !commentText.trim() && styles.sendCommentDisabled]}
+                  onPress={handleAddComment}
+                  disabled={!commentText.trim() || loadingComment}
+                >
+                  <Text style={styles.sendCommentText}>
+                    {loadingComment ? '...' : '➤'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -1014,6 +1160,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  clickableUsername: {
+    textDecorationLine: 'underline',
+  },
   postMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1180,6 +1329,24 @@ const styles = StyleSheet.create({
   likedCommentText: {
     color: '#ff69b4',
   },
+  repliesContainer: {
+    marginLeft: 40,
+    marginTop: -10,
+    marginBottom: 10,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  replyContainer: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  replyAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    marginRight: 8,
+  },
   addCommentContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -1211,6 +1378,26 @@ const styles = StyleSheet.create({
   sendCommentText: {
     color: 'white',
     fontSize: 16,
+  },
+  replyingToContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  replyingToText: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  cancelReplyText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 16,
+    paddingHorizontal: 10,
   },
   emptyComments: {
     color: 'rgba(255, 255, 255, 0.6)',

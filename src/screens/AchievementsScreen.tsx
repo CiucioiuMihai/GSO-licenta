@@ -39,7 +39,7 @@ interface AchievementsScreenProps {
   onNavigateToPostsFeed: () => void;
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
-  onNavigateToProfile: () => void;
+  onNavigateToProfile: (userId?: string) => void;
 }
 
 type TabType = 'all' | 'social' | 'content' | 'engagement' | 'special';

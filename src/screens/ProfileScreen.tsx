@@ -26,18 +26,20 @@ import { ACHIEVEMENT_DEFINITIONS } from '@/types';
 import Navbar from '@/components/Navbar';
 
 interface ProfileScreenProps {
+  userId?: string | null; // Optional userId to view other users' profiles
   onBack: () => void;
   onNavigateToHome: () => void;
   onNavigateToFriends: () => void;
   onNavigateToPostsFeed: () => void;
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
-  onNavigateToProfile: () => void;
+  onNavigateToProfile: (userId?: string) => void;
 }
 
 const { width } = Dimensions.get('window');
 
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ 
+  userId,
   onBack,
   onNavigateToHome,
   onNavigateToFriends,
@@ -55,12 +57,16 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [saving, setSaving] = useState(false);
   const [navbarTab, setNavbarTab] = useState('profile');
   const currentUser = auth.currentUser;
+  
+  // Determine if viewing own profile or another user's profile
+  const viewingUserId = userId || currentUser?.uid;
+  const isOwnProfile = !userId || userId === currentUser?.uid;
 
   // Fetch user data
   const fetchUserData = useCallback(async () => {
-    if (currentUser) {
+    if (viewingUserId) {
       try {
-        const data = await getUserDataWithCounts(currentUser.uid);
+        const data = await getUserDataWithCounts(viewingUserId);
         setUserData(data);
         setTempBio(data?.bio || '');
         setTempProfilePicture(data?.profilePicture || '');
@@ -68,17 +74,17 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
         console.error('Error fetching user data:', error);
       }
     }
-  }, [currentUser]);
+  }, [viewingUserId]);
 
   // Fetch user posts
   const fetchUserPosts = useCallback(() => {
-    if (currentUser) {
-      return getUserPosts(currentUser.uid, (posts) => {
+    if (viewingUserId) {
+      return getUserPosts(viewingUserId, (posts) => {
         setUserPosts(posts);
         setLoading(false);
       });
     }
-  }, [currentUser]);
+  }, [viewingUserId]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -234,15 +240,21 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <TouchableOpacity onPress={onBack}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Profile</Text>
-          <TouchableOpacity 
-            onPress={() => editMode ? handleSaveProfile() : setEditMode(true)}
-            disabled={saving}
-          >
-            <Text style={styles.editButton}>
-              {saving ? '...' : editMode ? '💾 Save' : '✏️ Edit'}
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.title}>
+            {isOwnProfile ? 'Profile' : userData?.displayName || 'Profile'}
+          </Text>
+          {isOwnProfile ? (
+            <TouchableOpacity 
+              onPress={() => editMode ? handleSaveProfile() : setEditMode(true)}
+              disabled={saving}
+            >
+              <Text style={styles.editButton}>
+                {saving ? '...' : editMode ? '💾 Save' : '✏️ Edit'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerRight} />
+          )}
         </View>
 
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -252,11 +264,11 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <View style={styles.profilePictureContainer}>
               <Image
                 source={{
-                  uri: editMode ? tempProfilePicture : (userData?.profilePicture || 'https://via.placeholder.com/120')
+                  uri: (editMode && isOwnProfile) ? tempProfilePicture : (userData?.profilePicture || 'https://via.placeholder.com/120')
                 }}
                 style={styles.profilePicture}
               />
-              {editMode && (
+              {editMode && isOwnProfile && (
                 <TouchableOpacity 
                   style={styles.changePictureButton}
                   onPress={pickProfileImage}
@@ -302,7 +314,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             {/* Bio */}
             <View style={styles.bioContainer}>
               <Text style={styles.bioLabel}>About Me</Text>
-              {editMode ? (
+              {editMode && isOwnProfile ? (
                 <TextInput
                   style={styles.bioInput}
                   value={tempBio}
@@ -320,7 +332,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </View>
 
             {/* Cancel button in edit mode */}
-            {editMode && (
+            {editMode && isOwnProfile && (
               <TouchableOpacity 
                 style={styles.cancelButton}
                 onPress={handleCancelEdit}
@@ -428,6 +440,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: 'white',
     fontWeight: '600',
+  },
+  headerRight: {
+    width: 60, // Same width as edit button to maintain centering
   },
   scrollView: {
     flex: 1,

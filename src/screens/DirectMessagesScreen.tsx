@@ -18,10 +18,12 @@ import { DirectMessage, User } from '@/types';
 import { 
   sendDirectMessage, 
   getConversationMessages, 
-  markMessagesAsRead 
+  markMessagesAsRead,
+  sendMessageWithBotResponse
 } from '@/services/friendsService';
 import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
 import { offlineService } from '@/services/offlineService';
+import { BOT_USER_ID, BOT_USER, isBotMessage } from '@/services/chatbotService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
 
@@ -48,9 +50,14 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
     // Get other user's info
     const fetchOtherUser = async () => {
       try {
-        const userDoc = await getDoc(doc(db, 'users', otherUserId));
-        if (userDoc.exists()) {
-          setOtherUser({ id: userDoc.id, ...userDoc.data() } as User);
+        // Check if it's the bot
+        if (otherUserId === BOT_USER_ID) {
+          setOtherUser(BOT_USER);
+        } else {
+          const userDoc = await getDoc(doc(db, 'users', otherUserId));
+          if (userDoc.exists()) {
+            setOtherUser({ id: userDoc.id, ...userDoc.data() } as User);
+          }
         }
       } catch (error) {
         console.error('Error fetching other user:', error);
@@ -129,21 +136,32 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
     console.log('Sending message:', newMessage.trim(), 'to user:', otherUserId);
     setLoading(true);
     try {
-      // Use offline service for automatic offline support
-      await offlineService.sendDirectMessage(
-        currentUser?.uid || '',
-        otherUserId,
-        newMessage.trim()
-      );
-      console.log('Message sent successfully');
+      // Check if messaging the bot
+      if (otherUserId === BOT_USER_ID) {
+        // Send message and get bot response
+        await sendMessageWithBotResponse(otherUserId, newMessage.trim(), currentUserData);
+        console.log('Message sent to bot successfully');
+      } else {
+        // Use offline service for automatic offline support (regular users)
+        await offlineService.sendDirectMessage(
+          currentUser?.uid || '',
+          otherUserId,
+          newMessage.trim()
+        );
+        console.log('Message sent successfully');
+      }
       setNewMessage('');
     } catch (error: any) {
       console.error('Error sending message:', error);
-      Alert.alert(
-        'Message Queued', 
-        'Your message will be sent when you reconnect to the internet.',
-        [{ text: 'OK' }]
-      );
+      if (otherUserId === BOT_USER_ID) {
+        Alert.alert('Error', 'Failed to send message to bot. Please try again.');
+      } else {
+        Alert.alert(
+          'Message Queued', 
+          'Your message will be sent when you reconnect to the internet.',
+          [{ text: 'OK' }]
+        );
+      }
       setNewMessage(''); // Clear input even if offline
     } finally {
       setLoading(false);

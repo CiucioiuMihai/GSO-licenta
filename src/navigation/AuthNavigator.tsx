@@ -30,6 +30,7 @@ const AuthNavigator: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [messageParams, setMessageParams] = useState<MessageScreenParams | null>(null);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -84,7 +85,8 @@ const AuthNavigator: React.FC = () => {
     setCurrentScreen('achievements');
   };
 
-  const handleNavigateToProfile = () => {
+  const handleNavigateToProfile = (userId?: string) => {
+    setProfileUserId(userId || null);
     setCurrentScreen('profile');
   };
 
@@ -115,6 +117,7 @@ const AuthNavigator: React.FC = () => {
   };
 
   const handleBackFromProfile = () => {
+    setProfileUserId(null);
     setCurrentScreen('home');
   };
 
@@ -214,6 +217,7 @@ const AuthNavigator: React.FC = () => {
       case 'profile':
         return (
           <ProfileScreen
+            userId={profileUserId}
             onBack={handleBackFromProfile}
             onNavigateToHome={handleNavigateToHome}
             onNavigateToFriends={handleNavigateToFriends}

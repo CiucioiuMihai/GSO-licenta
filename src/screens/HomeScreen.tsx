@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/services/firebase';
 import { getUserDataWithCounts } from '@/services/postsService';
-import { handleDailyLogin } from '@/services/levelService';
+import { handleDailyLogin, syncUserXP } from '@/services/levelService';
 import { User } from '@/types';
 import Navbar from '../components/Navbar';
 
@@ -24,7 +24,7 @@ interface HomeScreenProps {
   onNavigateToPostsFeed: () => void;
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
-  onNavigateToProfile: () => void;
+  onNavigateToProfile: (userId?: string) => void;
 }
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ 
@@ -47,15 +47,20 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
         const userDataWithCounts = await getUserDataWithCounts(user.uid);
         setUserData(userDataWithCounts);
         
+        // Always sync XP to ensure it matches actual user stats
+        console.log('HomeScreen - Syncing user XP with actual stats');
+        await syncUserXP(user.uid, userDataWithCounts);
+        
         // Track daily login only on initial load, not on refresh
         if (checkDailyLogin && !dailyLoginChecked && userDataWithCounts) {
           console.log('HomeScreen - Checking daily login for first time');
           await handleDailyLogin(user.uid, userDataWithCounts);
           setDailyLoginChecked(true);
-          // Refresh user data to get updated streak and XP
-          const updatedUserData = await getUserDataWithCounts(user.uid);
-          setUserData(updatedUserData);
         }
+        
+        // Refresh user data to get updated XP, level, and streak
+        const updatedUserData = await getUserDataWithCounts(user.uid);
+        setUserData(updatedUserData);
       } catch (error) {
         console.error('Error fetching user data:', error);
       }
