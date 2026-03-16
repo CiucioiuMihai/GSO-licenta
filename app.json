@@ -20,16 +20,24 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "permissions": [
         "NOTIFICATIONS"
-      ]
+      ],
+      "package": "com.mihaisic.GamifiedSocialMediaApp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-notifications"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a0b8b5ba-020e-4cc9-9d4c-4147d91a3eaf"
+      }
+    },
+    "owner": "mihaisic"
   }
 }

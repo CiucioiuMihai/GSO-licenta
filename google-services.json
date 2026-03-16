@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "619160895146",
+    "project_id": "gso-gamified-social",
+    "storage_bucket": "gso-gamified-social.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:619160895146:android:6a572acf68d1e7bc389ad3",
+        "android_client_info": {
+          "package_name": "com.mihaisic.GamifiedSocialMediaApp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBvBoYrlzS0CVSoC6KagVCgZAeF_U5MFcA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

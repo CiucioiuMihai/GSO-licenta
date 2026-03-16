@@ -1,6 +1,7 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { getAuth, Auth, connectAuthEmulator, initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getAuth, Auth, connectAuthEmulator, initializeAuth } from 'firebase/auth';
+import * as FirebaseAuth from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -31,9 +32,20 @@ const app: FirebaseApp = initializeApp(firebaseConfig);
 export const db: Firestore = getFirestore(app);
 export const auth: Auth = Platform.OS === 'web'
   ? getAuth(app)
-  : initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage),
-    });
+  : (() => {
+      // Support multiple firebase/auth versions: use RN persistence when available.
+      const getPersistence = (FirebaseAuth as unknown as {
+        getReactNativePersistence?: (storage: typeof AsyncStorage) => unknown;
+      }).getReactNativePersistence;
+
+      if (typeof getPersistence === 'function') {
+        return initializeAuth(app, {
+          persistence: getPersistence(AsyncStorage) as any,
+        });
+      }
+
+      return getAuth(app);
+    })();
 
 // Connect to Firebase emulators in development (uncomment for local testing)
 // if (__DEV__) {

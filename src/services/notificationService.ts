@@ -56,6 +56,21 @@ export const registerForPushNotificationsAsync = async (userId: string): Promise
         return null;
       }
 
+      if (Platform.OS === 'android') {
+        const hasGoogleServicesFile = Boolean(
+          (Constants.expoConfig as { android?: { googleServicesFile?: string } } | null)?.android
+            ?.googleServicesFile
+        );
+
+        if (!hasGoogleServicesFile) {
+          console.log(
+            'Android push disabled: missing expo.android.googleServicesFile in app config. Add google-services.json and rebuild the dev client.'
+          );
+          await updateUserNotificationSettings(userId, { notificationsEnabled: true });
+          return null;
+        }
+      }
+
       const projectId =
         Constants.easConfig?.projectId ||
         (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;

@@ -45,6 +45,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
     if (user?.uid) {
       try {
         const userDataWithCounts = await getUserDataWithCounts(user.uid);
+
+        if (!userDataWithCounts) {
+          setUserData(null);
+          return;
+        }
+
         setUserData(userDataWithCounts);
         
         // Always sync XP to ensure it matches actual user stats
