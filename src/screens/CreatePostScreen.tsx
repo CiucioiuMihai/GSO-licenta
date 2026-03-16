@@ -28,6 +28,7 @@ interface CreatePostScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+  onNavigateToLeaderboard?: () => void;
 }
 
 const { width } = Dimensions.get('window');
@@ -40,7 +41,8 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
   onNavigateToPostsFeed,
   onNavigateToCreatePost,
   onNavigateToAchievements,
-  onNavigateToProfile
+  onNavigateToProfile,
+  onNavigateToLeaderboard,
 }) => {
   const [content, setContent] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -208,6 +210,8 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
       onNavigateToAchievements();
     } else if (tab === 'profile') {
       onNavigateToProfile();
+    } else if (tab === 'leaderboard') {
+      onNavigateToLeaderboard?.();
     }
   };
 

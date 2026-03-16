@@ -18,7 +18,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '@/services/firebase';
 import { getAllReports, updateReportStatus } from '@/services/reportService';
-import { Report, User } from '@/types';
+import { adminDeletePost, adminDeleteTag, adminGetAllTags } from '@/services/adminFunctions';
+import { Report, User, Tag } from '@/types';
 import { getUserDataWithCounts } from '@/services/postsService';
 import Navbar from '@/components/Navbar';
 
@@ -30,9 +31,11 @@ interface AdminScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+  onNavigateToLeaderboard?: () => void;
 }
 
 type FilterStatus = 'all' | 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+type ActiveView = 'reports' | 'tags';
 
 const AdminScreen: React.FC<AdminScreenProps> = ({
   onBack,
@@ -42,6 +45,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
   onNavigateToCreatePost,
   onNavigateToAchievements,
   onNavigateToProfile,
+  onNavigateToLeaderboard,
 }) => {
   const [reports, setReports] = useState<Report[]>([]);
   const [filteredReports, setFilteredReports] = useState<Report[]>([]);
@@ -54,6 +58,9 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [userData, setUserData] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('profile');
+  const [activeView, setActiveView] = useState<ActiveView>('reports');
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
   const currentUser = auth.currentUser;
 
   useEffect(() => {
@@ -155,6 +162,108 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
     }
   };
 
+  const handleDeleteReportedPost = async () => {
+    if (!selectedReport || selectedReport.reportedItem.type !== 'post' || !currentUser) return;
+
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm('This will permanently delete the post and cannot be undone. Are you sure?')
+      : await new Promise<boolean>(resolve =>
+          Alert.alert(
+            'Delete Post',
+            'This will permanently delete the post and cannot be undone. Are you sure?',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          )
+        );
+
+    if (!confirmed) return;
+
+    try {
+      await adminDeletePost(selectedReport.reportedItem.id, currentUser.uid);
+      await updateReportStatus(selectedReport.id, 'resolved', 'Post deleted by admin');
+      setModalVisible(false);
+      setSelectedReport(null);
+      setResolution('');
+      await fetchReports();
+    } catch (error: any) {
+      console.error('Delete post error:', error);
+      Alert.alert('Error', error.message || 'Failed to delete post');
+    }
+  };
+
+  const handleDeleteReportedTag = async () => {
+    if (!selectedReport || selectedReport.reportedItem.type !== 'tag' || !currentUser) return;
+
+    const tagName = selectedReport.details?.tagName || selectedReport.reportedItem.id;
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(`This will permanently delete the tag "#${tagName}". Are you sure?`)
+      : await new Promise<boolean>(resolve =>
+          Alert.alert(
+            'Delete Tag',
+            `This will permanently delete the tag "#${tagName}". Are you sure?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          )
+        );
+
+    if (!confirmed) return;
+
+    try {
+      await adminDeleteTag(selectedReport.reportedItem.id, currentUser.uid);
+      await updateReportStatus(selectedReport.id, 'resolved', 'Tag deleted by admin');
+      setModalVisible(false);
+      setSelectedReport(null);
+      setResolution('');
+      await fetchReports();
+    } catch (error: any) {
+      console.error('Delete tag error:', error);
+      Alert.alert('Error', error.message || 'Failed to delete tag');
+    }
+  };
+
+  const fetchTags = useCallback(async () => {
+    setTagsLoading(true);
+    try {
+      const allTags = await adminGetAllTags();
+      setTags(allTags);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to fetch tags');
+    } finally {
+      setTagsLoading(false);
+    }
+  }, []);
+
+  const handleDeleteTag = async (tag: Tag) => {
+    if (!currentUser) return;
+
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(`Delete tag "#${tag.name}" (${tag.postsCount} posts)? This cannot be undone.`)
+      : await new Promise<boolean>(resolve =>
+          Alert.alert(
+            'Delete Tag',
+            `Delete tag "#${tag.name}" (${tag.postsCount} posts)? This cannot be undone.`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          )
+        );
+
+    if (!confirmed) return;
+
+    try {
+      await adminDeleteTag(tag.id, currentUser.uid);
+      setTags(prev => prev.filter(t => t.id !== tag.id));
+    } catch (error: any) {
+      console.error('Delete tag error:', error);
+      Alert.alert('Error', error.message || 'Failed to delete tag');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
@@ -187,6 +296,8 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
       onNavigateToAchievements();
     } else if (tab === 'profile') {
       onNavigateToProfile();
+    } else if (tab === 'leaderboard') {
+      onNavigateToLeaderboard?.();
     }
   };
 
@@ -253,6 +364,27 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
           </TouchableOpacity>
         </View>
 
+        {/* View Switcher */}
+        <View style={styles.viewSwitcher}>
+          <TouchableOpacity
+            style={[styles.viewSwitcherButton, activeView === 'reports' && styles.viewSwitcherButtonActive]}
+            onPress={() => setActiveView('reports')}
+          >
+            <Text style={[styles.viewSwitcherText, activeView === 'reports' && styles.viewSwitcherTextActive]}>Reports</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewSwitcherButton, activeView === 'tags' && styles.viewSwitcherButtonActive]}
+            onPress={() => {
+              setActiveView('tags');
+              if (tags.length === 0) fetchTags();
+            }}
+          >
+            <Text style={[styles.viewSwitcherText, activeView === 'tags' && styles.viewSwitcherTextActive]}>Tags</Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeView === 'reports' ? (
+          <>
         {/* Filter Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterContainer}>
           {(['all', 'pending', 'reviewed', 'resolved', 'dismissed'] as FilterStatus[]).map((status) => (
@@ -288,6 +420,46 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
             </View>
           }
         />
+          </>
+        ) : (
+          /* Tags View */
+          <View style={{ flex: 1 }}>
+            <View style={styles.tagsHeader}>
+              <Text style={styles.tagsHeaderTitle}>All Tags ({tags.length})</Text>
+              <TouchableOpacity onPress={fetchTags} style={styles.refreshButton}>
+                <Text style={styles.refreshButtonText}>↻</Text>
+              </TouchableOpacity>
+            </View>
+            {tagsLoading ? (
+              <ActivityIndicator color="#fff" style={{ marginTop: 32 }} />
+            ) : (
+              <FlatList
+                data={tags}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.listContent}
+                renderItem={({ item }) => (
+                  <View style={styles.tagRow}>
+                    <View style={styles.tagInfo}>
+                      <Text style={styles.tagName}>#{item.name}</Text>
+                      <Text style={styles.tagCount}>{item.postsCount} posts</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.deleteTagButton}
+                      onPress={() => handleDeleteTag(item)}
+                    >
+                      <Text style={styles.deleteButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No tags found</Text>
+                  </View>
+                }
+              />
+            )}
+          </View>
+        )}
 
         {/* Report Detail Modal */}
         <Modal
@@ -355,6 +527,13 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
                       </View>
                     )}
 
+                    {selectedReport.details?.tagName && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Tag:</Text>
+                        <Text style={styles.detailValue}>#{selectedReport.details.tagName}</Text>
+                      </View>
+                    )}
+
                     {selectedReport.details?.userName && (
                       <View style={styles.detailRow}>
                         <Text style={styles.detailLabel}>Reported User:</Text>
@@ -417,6 +596,24 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
                       >
                         <Text style={styles.actionButtonText}>Dismiss</Text>
                       </TouchableOpacity>
+
+                      {selectedReport.reportedItem.type === 'post' && (
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.deleteButton]}
+                          onPress={handleDeleteReportedPost}
+                        >
+                          <Text style={styles.actionButtonText}>Delete Post</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {selectedReport.reportedItem.type === 'tag' && (
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.deleteButton]}
+                          onPress={handleDeleteReportedTag}
+                        >
+                          <Text style={styles.actionButtonText}>Delete Tag</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </ScrollView>
                 )}
@@ -677,10 +874,84 @@ const styles = StyleSheet.create({
   dismissButton: {
     backgroundColor: 'rgba(220, 20, 60, 0.8)',
   },
+  deleteButton: {
+    backgroundColor: 'rgba(180, 0, 0, 0.9)',
+  },
   actionButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  viewSwitcher: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    padding: 3,
+  },
+  viewSwitcherButton: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  viewSwitcherButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  viewSwitcherText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  viewSwitcherTextActive: {
+    color: '#fff',
+  },
+  tagsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  tagsHeaderTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  tagInfo: {
+    flex: 1,
+  },
+  tagName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  tagCount: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  deleteTagButton: {
+    backgroundColor: 'rgba(180,0,0,0.85)',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 7,
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
 

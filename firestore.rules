@@ -1,6 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
     // Users collection
     match /users/{userId} {
       // Any authenticated user can read any user profile (for viewing profiles, search, posts)
@@ -8,6 +12,9 @@ service cloud.firestore {
       
       // Only the user can create their own user document at registration
       allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Admin can update any user field (e.g. decrement totalPosts on post deletion)
+      allow update: if isAdmin();
       
       // Prevent users from modifying their role field (only manual admin assignment via Firebase Console)
       allow update: if request.auth != null && 
@@ -67,7 +74,7 @@ service cloud.firestore {
          'likedBy' in request.resource.data.diff(resource.data).affectedKeys() || // Anyone can like
          'comments' in request.resource.data.diff(resource.data).affectedKeys()); // Comments count update
       allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.userId;
+        (request.auth.uid == resource.data.userId || isAdmin());
     }
     
     // Comments - users can create comments, read all comments, update/delete their own
@@ -99,10 +106,11 @@ service cloud.firestore {
         request.auth.uid == resource.data.userId;
     }
     
-    // Tags - anyone can read, system can create/update (via posts service)
+    // Tags - anyone can read, system can create/update (via posts service), admins can delete
     match /tags/{tagId} {
       allow read: if request.auth != null;
       allow create, update: if request.auth != null;
+      allow delete: if isAdmin();
     }
     
     // Friend requests
@@ -147,6 +155,12 @@ service cloud.firestore {
         request.auth.uid == resource.data.toUserId; // For marking as read
     }
     
+    // Moderation logs - admins and system can create, admins can read
+    match /moderationLogs/{logId} {
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+    }
+
     // Reports
     match /reports/{reportId} {
       allow create: if request.auth != null && 
@@ -156,6 +170,7 @@ service cloud.firestore {
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
       allow update: if request.auth != null && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow delete: if isAdmin();
       allow list: if request.auth != null && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }

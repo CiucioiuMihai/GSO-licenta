@@ -40,6 +40,7 @@ interface AchievementsScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+  onNavigateToLeaderboard?: () => void;
 }
 
 type TabType = 'all' | 'social' | 'content' | 'engagement' | 'special';
@@ -55,7 +56,8 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
   onNavigateToPostsFeed,
   onNavigateToCreatePost,
   onNavigateToAchievements,
-  onNavigateToProfile
+  onNavigateToProfile,
+  onNavigateToLeaderboard,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [navbarTab, setNavbarTab] = useState('achievements');
@@ -191,6 +193,8 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
       // Already on achievements screen
     } else if (tab === 'profile') {
       onNavigateToProfile();
+    } else if (tab === 'leaderboard') {
+      onNavigateToLeaderboard?.();
     }
   };
 

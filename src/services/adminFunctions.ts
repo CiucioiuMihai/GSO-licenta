@@ -4,14 +4,19 @@ import {
   addDoc, 
   updateDoc, 
   getDocs, 
+  getDoc,
+  deleteDoc,
   query, 
   where, 
   orderBy, 
   serverTimestamp,
-  Timestamp 
+  Timestamp,
+  writeBatch,
+  increment,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { batchApplyRetroactiveXP } from './levelService';
+import { Tag } from '@/types';
 
 // Admin stats interface
 interface AdminStats {
@@ -315,5 +320,102 @@ export const adminApplyRetroactiveXPToAllUsers = async (
       success: false,
       error: error.message
     };
+  }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// Admin Content Deletion Functions
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Delete any post as admin, regardless of ownership.
+ * Updates the post owner's totalPosts count and all related tag postsCount values.
+ */
+export const adminDeletePost = async (postId: string, moderatorId: string): Promise<void> => {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) throw new Error('Post not found');
+
+    const postData = postSnap.data();
+    const batch = writeBatch(db);
+
+    // Delete the post
+    batch.delete(postRef);
+
+    // Decrement owner's post count
+    if (postData.userId) {
+      batch.update(doc(db, 'users', postData.userId), {
+        totalPosts: increment(-1),
+      });
+    }
+
+    // Decrement each tag's postsCount
+    if (Array.isArray(postData.tags)) {
+      for (const tag of postData.tags as string[]) {
+        const tagRef = doc(db, 'tags', tag.toLowerCase());
+        const tagSnap = await getDoc(tagRef);
+        if (tagSnap.exists()) {
+          batch.update(tagRef, { postsCount: increment(-1) });
+        }
+      }
+    }
+
+    await batch.commit();
+
+    // Log the action
+    await addDoc(collection(db, 'moderationLogs'), {
+      contentId: postId,
+      contentType: 'post',
+      action: 'admin_deleted',
+      moderatorId,
+      timestamp: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error deleting post as admin:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a tag entirely from the tags collection.
+ */
+export const adminDeleteTag = async (tagId: string, moderatorId: string): Promise<void> => {
+  try {
+    const tagRef = doc(db, 'tags', tagId);
+    await deleteDoc(tagRef);
+
+    await addDoc(collection(db, 'moderationLogs'), {
+      contentId: tagId,
+      contentType: 'tag',
+      action: 'admin_deleted',
+      moderatorId,
+      timestamp: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error deleting tag as admin:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetch all tags for admin management.
+ */
+export const adminGetAllTags = async (): Promise<Tag[]> => {
+  try {
+    const snapshot = await getDocs(
+      query(collection(db, 'tags'), orderBy('postsCount', 'desc'))
+    );
+
+    return snapshot.docs.map(d => ({
+      id: d.id,
+      ...(d.data() as Omit<Tag, 'id'>),
+      createdAt: (d.data().createdAt as Timestamp)?.toDate?.() ?? new Date(),
+      lastUsed: (d.data().lastUsed as Timestamp)?.toDate?.() ?? new Date(),
+    }));
+  } catch (error) {
+    console.error('Error fetching tags for admin:', error);
+    throw error;
   }
 };

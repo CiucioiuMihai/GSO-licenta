@@ -49,6 +49,7 @@ interface PostsFeedScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+  onNavigateToLeaderboard?: () => void;
 }
 
 const { width } = Dimensions.get('window');
@@ -63,7 +64,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   onNavigateToPostsFeed,
   onNavigateToCreatePost,
   onNavigateToAchievements,
-  onNavigateToProfile
+  onNavigateToProfile,
+  onNavigateToLeaderboard,
 }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [postsWithUsers, setPostsWithUsers] = useState<(Post & { user: User })[]>([]);
@@ -660,6 +662,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       onNavigateToAchievements();
     } else if (tab === 'profile') {
       onNavigateToProfile();
+    } else if (tab === 'leaderboard') {
+      onNavigateToLeaderboard?.();
     }
   };
 

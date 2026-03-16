@@ -17,4 +17,9 @@ Backend:Firebase
 -Notificari
 -Admin mode-done
 -chatbot-done (Google Gemini AI, works on web+android+iOS)
+chunking la imagini
+transformare imagine la o limita
+download
+leaderboard
+descriere mai complexa la chatbot
 titlu,descriere

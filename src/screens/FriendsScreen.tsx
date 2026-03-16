@@ -38,6 +38,7 @@ interface FriendsScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+  onNavigateToLeaderboard?: () => void;
 }
 
 type TabType = 'friends' | 'requests' | 'search';
@@ -57,7 +58,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
   onNavigateToPostsFeed,
   onNavigateToCreatePost,
   onNavigateToAchievements,
-  onNavigateToProfile
+  onNavigateToProfile,
+  onNavigateToLeaderboard,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('friends');
   const [navbarTab, setNavbarTab] = useState('explore');
@@ -343,6 +345,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
       onNavigateToAchievements();
     } else if (tab === 'profile') {
       onNavigateToProfile();
+    } else if (tab === 'leaderboard') {
+      onNavigateToLeaderboard?.();
     }
   };
 

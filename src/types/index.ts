@@ -400,7 +400,7 @@ export interface Report {
   id: string;
   reportedBy: string; // User ID who reported
   reportedItem: {
-    type: 'post' | 'comment' | 'user';
+    type: 'post' | 'comment' | 'user' | 'tag';
     id: string;
   };
   reason: string;
@@ -414,5 +414,6 @@ export interface Report {
     commentText?: string;
     userId?: string;
     userName?: string;
+    tagName?: string;
   };
 }

@@ -14,7 +14,7 @@ import { db, auth } from './firebase';
 import { Report } from '@/types';
 
 export const createReport = async (
-  itemType: 'post' | 'comment' | 'user',
+  itemType: 'post' | 'comment' | 'user' | 'tag',
   itemId: string,
   reason: string,
   details?: {
@@ -22,6 +22,7 @@ export const createReport = async (
     commentText?: string;
     userId?: string;
     userName?: string;
+    tagName?: string;
   }
 ): Promise<void> => {
   const currentUser = auth.currentUser;

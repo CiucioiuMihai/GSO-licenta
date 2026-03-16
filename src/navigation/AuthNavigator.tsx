@@ -13,9 +13,10 @@ import CreatePostScreen from '../screens/CreatePostScreen';
 import AchievementsScreen from '../screens/AchievementsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import AdminScreen from '../screens/AdminScreen';
+import LeaderboardScreen from '../screens/LeaderboardScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
-type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements' | 'profile' | 'admin';
+type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements' | 'profile' | 'admin' | 'leaderboard';
 
 const { width: screenWidth } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
@@ -126,6 +127,10 @@ const AuthNavigator: React.FC = () => {
     setCurrentScreen('admin');
   };
 
+  const handleNavigateToLeaderboard = () => {
+    setCurrentScreen('leaderboard');
+  };
+
   const handleBackFromAdmin = () => {
     setCurrentScreen('profile');
   };
@@ -146,6 +151,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
             onNavigateToCreatePost={handleNavigateToCreatePost}            onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
       case 'friends':
@@ -159,6 +165,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
       case 'combined-messages':
@@ -171,6 +178,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
       case 'posts-feed':
@@ -184,6 +192,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
       case 'create-post':
@@ -197,6 +206,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
       case 'messages':
@@ -227,6 +237,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
       case 'profile':
@@ -241,6 +252,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
             onNavigateToAdmin={handleNavigateToAdmin}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
       case 'admin':
@@ -253,6 +265,19 @@ const AuthNavigator: React.FC = () => {
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
+          />
+        );
+      case 'leaderboard':
+        return (
+          <LeaderboardScreen
+            onNavigateToHome={handleNavigateToHome}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
       default:
@@ -264,6 +289,7 @@ const AuthNavigator: React.FC = () => {
             onNavigateToCreatePost={handleNavigateToCreatePost}
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
         );
     }

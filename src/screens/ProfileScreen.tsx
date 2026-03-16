@@ -34,6 +34,7 @@ interface ProfileScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+    onNavigateToLeaderboard?: () => void;
   onNavigateToAdmin?: () => void;
 }
 
@@ -48,7 +49,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToCreatePost,
   onNavigateToAchievements,
   onNavigateToProfile,
-  onNavigateToAdmin
+  onNavigateToAdmin,
+  onNavigateToLeaderboard,
 }) => {
   const [userData, setUserData] = useState<User | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
@@ -117,6 +119,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
       onNavigateToAchievements();
     } else if (tab === 'profile') {
       // Already on profile screen
+    } else if (tab === 'leaderboard') {
+      onNavigateToLeaderboard?.();
     }
   };
 

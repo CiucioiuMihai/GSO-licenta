@@ -41,6 +41,7 @@ interface CombinedMessagesScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+  onNavigateToLeaderboard?: () => void;
 }
 
 type TabType = 'conversations' | 'friends' | 'requests' | 'search';
@@ -56,7 +57,8 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   onNavigateToPostsFeed,
   onNavigateToCreatePost,
   onNavigateToAchievements,
-  onNavigateToProfile
+  onNavigateToProfile,
+  onNavigateToLeaderboard,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('conversations');
   const [navbarTab, setNavbarTab] = useState('explore');
@@ -343,6 +345,8 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
       onNavigateToAchievements();
     } else if (tab === 'profile') {
       onNavigateToProfile();
+    } else if (tab === 'leaderboard') {
+      onNavigateToLeaderboard?.();
     }
   };
 

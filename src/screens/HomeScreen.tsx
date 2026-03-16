@@ -25,6 +25,7 @@ interface HomeScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+  onNavigateToLeaderboard?: () => void;
 }
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ 
@@ -33,7 +34,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
   onNavigateToPostsFeed, 
   onNavigateToCreatePost,
   onNavigateToAchievements,
-  onNavigateToProfile
+  onNavigateToLeaderboard,
+  onNavigateToProfile,
 }) => {
   const [activeTab, setActiveTab] = useState('home');
   const [userData, setUserData] = useState<User | null>(null);
@@ -116,6 +118,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
     } else if (tab === 'profile') {
       // Navigate to profile
       onNavigateToProfile();
+    } else if (tab === 'leaderboard') {
+      onNavigateToLeaderboard?.();
     }
   };
 

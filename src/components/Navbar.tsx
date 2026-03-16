@@ -20,6 +20,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'explore', label: 'Messages', icon: '💬' },
     { id: 'create', label: 'Create', icon: '➕' },
+    { id: 'leaderboard', label: 'Ranking', icon: '🥇' },
     { id: 'achievements', label: 'Achievements', icon: '🏆' },
     { id: 'profile', label: 'Profile', icon: '👤' },
   ];
