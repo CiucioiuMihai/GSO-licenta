@@ -10,8 +10,6 @@ import {
   ScrollView,
   Platform,
   StatusBar,
-  Pressable,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -366,6 +364,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
         <TouchableOpacity 
           style={styles.friendInfo}
           onPress={() => onNavigateToProfile(item.id)}
+          activeOpacity={0.7}
         >
           <View style={styles.friendAvatar}>
             <Text style={styles.friendAvatarText}>
@@ -449,6 +448,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
         <TouchableOpacity 
           style={styles.friendInfo}
           onPress={() => onNavigateToProfile(item.id)}
+          activeOpacity={0.7}
         >
           <View style={styles.friendAvatar}>
             <Text style={styles.friendAvatarText}>
@@ -518,11 +518,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
         </ScrollView>
 
         {/* Content */}
-        <KeyboardAvoidingView 
-          style={styles.content}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'position'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 120 : -150}
-        >
+        <View style={styles.content}>
           {activeTab === 'search' && (
             <>
               <View style={styles.searchContainer}>
@@ -609,7 +605,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
             keyboardShouldPersistTaps='handled'
             keyboardDismissMode='on-drag'
           />
-        </KeyboardAvoidingView>
+        </View>
         
         {/* Navbar */}
         <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={currentUserData} />
@@ -726,7 +722,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingBottom: 55,
+    paddingBottom: 80,
   },
   botChatButton: {
     flexDirection: 'row',

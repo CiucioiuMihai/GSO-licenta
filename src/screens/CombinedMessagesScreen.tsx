@@ -31,9 +31,16 @@ import { offlineService } from '@/services/offlineService';
 import { BOT_USER_ID, BOT_USER, isBotMessage } from '@/services/chatbotService';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
+import Navbar from '@/components/Navbar';
 
 interface CombinedMessagesScreenProps {
   onBack: () => void;
+  onNavigateToHome: () => void;
+  onNavigateToFriends: () => void;
+  onNavigateToPostsFeed: () => void;
+  onNavigateToCreatePost: () => void;
+  onNavigateToAchievements: () => void;
+  onNavigateToProfile: (userId?: string) => void;
 }
 
 type TabType = 'conversations' | 'friends' | 'requests' | 'search';
@@ -42,8 +49,17 @@ const { width: screenWidth } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
 const isTablet = screenWidth > 768;
 
-const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack }) => {
+const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ 
+  onBack,
+  onNavigateToHome,
+  onNavigateToFriends,
+  onNavigateToPostsFeed,
+  onNavigateToCreatePost,
+  onNavigateToAchievements,
+  onNavigateToProfile
+}) => {
   const [activeTab, setActiveTab] = useState<TabType>('conversations');
+  const [navbarTab, setNavbarTab] = useState('explore');
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -315,6 +331,21 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
     }
   };
 
+  const handleNavbarTabPress = (tab: string) => {
+    setNavbarTab(tab);
+    if (tab === 'explore') {
+      // Already on messages screen
+    } else if (tab === 'home') {
+      onNavigateToHome();
+    } else if (tab === 'create') {
+      onNavigateToCreatePost();
+    } else if (tab === 'achievements') {
+      onNavigateToAchievements();
+    } else if (tab === 'profile') {
+      onNavigateToProfile();
+    }
+  };
+
   const renderLeftSidebar = () => (
     <View style={styles.sidebar}>
       <LinearGradient colors={['#667eea', '#764ba2']} style={styles.sidebarGradient}>
@@ -364,6 +395,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
         {/* Content List */}
         <FlatList
           style={styles.sidebarList}
+          contentContainerStyle={styles.sidebarListContent}
           data={
             activeTab === 'conversations' ? conversations :
             activeTab === 'friends' ? friends :
@@ -423,17 +455,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
                 <View style={styles.friendItem}>
                   <TouchableOpacity
                     style={styles.friendItemTouchable}
-                    onPress={() => {
-                      const existingConvo = conversations.find(c => {
-                        const otherUserId = getOtherUserId(c);
-                        return otherUserId === item.id;
-                      });
-                      if (existingConvo) {
-                        handleStartChat(item.id, existingConvo.id);
-                      } else {
-                        handleStartChat(item.id, `temp_${item.id}`);
-                      }
-                    }}
+                    onPress={() => onNavigateToProfile(item.id)}
                   >
                     <View style={styles.listItemContent}>
                       <Text style={styles.listItemTitle}>{item.displayName}</Text>
@@ -442,14 +464,32 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
                       </Text>
                     </View>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
-                    onPress={() => userIsFollowed ? handleUnfollowUser(item.id) : handleFollowUser(item.id)}
-                  >
-                    <Text style={[styles.followButtonTextSmall, userIsFollowed && styles.followingButtonTextSmall]}>
-                      {userIsFollowed ? '✓' : '+'}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.friendActions}>
+                    <TouchableOpacity
+                      style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
+                      onPress={() => userIsFollowed ? handleUnfollowUser(item.id) : handleFollowUser(item.id)}
+                    >
+                      <Text style={[styles.followButtonTextSmall, userIsFollowed && styles.followingButtonTextSmall]}>
+                        {userIsFollowed ? '✓' : '+'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.chatButtonSmall}
+                      onPress={() => {
+                        const existingConvo = conversations.find(c => {
+                          const otherUserId = getOtherUserId(c);
+                          return otherUserId === item.id;
+                        });
+                        if (existingConvo) {
+                          handleStartChat(item.id, existingConvo.id);
+                        } else {
+                          handleStartChat(item.id, `temp_${item.id}`);
+                        }
+                      }}
+                    >
+                      <Text style={styles.chatButtonSmallText}>💬</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               );
             }
@@ -484,10 +524,13 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
             
             return (
               <View style={styles.searchResultItem}>
-                <View style={styles.listItemContent}>
+                <TouchableOpacity
+                  style={styles.listItemContent}
+                  onPress={() => onNavigateToProfile(item.id)}
+                >
                   <Text style={styles.listItemTitle}>{item.displayName}</Text>
                   <Text style={styles.listItemSubtitle}>{item.email}</Text>
-                </View>
+                </TouchableOpacity>
                 <View style={styles.searchResultButtons}>
                   <TouchableOpacity
                     style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
@@ -518,6 +561,11 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
             </View>
           }
         />
+        
+        {/* Navbar - Only show on mobile */}
+        {!isWeb && !isTablet && (
+          <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={currentUserData} />
+        )}
       </LinearGradient>
     </View>
   );
@@ -541,10 +589,23 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
         <LinearGradient colors={['#667eea', '#764ba2']} style={styles.chatGradient}>
           {/* Chat Header */}
           <View style={styles.chatHeader}>
-            <Text style={styles.chatHeaderTitle}>{otherUser.displayName}</Text>
-            <Text style={styles.chatHeaderSubtitle}>
-              {otherUser.isOnline ? '🟢 Online' : '⚫ Offline'}
-            </Text>
+            {!isWeb && !isTablet && (
+              <TouchableOpacity 
+                onPress={() => {
+                  setSelectedConversation(null);
+                  setSelectedUserId(null);
+                }} 
+                style={styles.chatBackButton}
+              >
+                <Text style={styles.backButtonText}>←</Text>
+              </TouchableOpacity>
+            )}
+            <View style={styles.chatHeaderContent}>
+              <Text style={styles.chatHeaderTitle}>{otherUser.displayName}</Text>
+              <Text style={styles.chatHeaderSubtitle}>
+                {otherUser.isOnline ? '🟢 Online' : '⚫ Offline'}
+              </Text>
+            </View>
           </View>
 
           {/* Messages List */}
@@ -631,20 +692,14 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ onBack 
     );
   }
 
-  // For mobile: use existing separate screens (fallback)
+  // For mobile: full-screen list or chat based on selection
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient colors={['#667eea', '#764ba2']} style={styles.gradient}>
-        <View style={styles.mobileHeader}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Messages</Text>
-        </View>
-        <Text style={styles.mobileNote}>
-          Use web version for side-by-side chat layout
-        </Text>
-      </LinearGradient>
+      {!selectedConversation ? (
+        <>{renderLeftSidebar()}</>
+      ) : (
+        <>{renderChatArea()}</>
+      )}
     </SafeAreaView>
   );
 };
@@ -740,6 +795,9 @@ const styles = StyleSheet.create({
   sidebarList: {
     flex: 1,
     paddingHorizontal: 8,
+  },
+  sidebarListContent: {
+    paddingBottom: 80,
   },
   listItem: {
     flexDirection: 'row',
@@ -880,11 +938,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.2)',
     backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  chatBackButton: {
+    marginRight: 12,
+    padding: 4,
+  },
+  chatHeaderContent: {
+    flex: 1,
   },
   chatHeaderTitle: {
     color: 'white',
@@ -1018,6 +1085,22 @@ const styles = StyleSheet.create({
   },
   followingButtonSmall: {
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  friendActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chatButtonSmall: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatButtonSmallText: {
+    fontSize: 16,
   },
   followButtonTextSmall: {
     color: 'white',

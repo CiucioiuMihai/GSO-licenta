@@ -1,6 +1,8 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, Auth, connectAuthEmulator, initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // Firebase configuration interface
 interface FirebaseConfig {
@@ -27,7 +29,11 @@ const app: FirebaseApp = initializeApp(firebaseConfig);
 
 // Initialize Firebase services
 export const db: Firestore = getFirestore(app);
-export const auth: Auth = getAuth(app);
+export const auth: Auth = Platform.OS === 'web'
+  ? getAuth(app)
+  : initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
 
 // Connect to Firebase emulators in development (uncomment for local testing)
 // if (__DEV__) {

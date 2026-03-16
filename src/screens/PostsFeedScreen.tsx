@@ -36,6 +36,7 @@ import {
   unfollowUser,
   getUserDataWithCounts
 } from '@/services/postsService';
+import { createReport } from '@/services/reportService';
 import { auth } from '@/services/firebase';
 import Navbar from '@/components/Navbar';
 
@@ -91,6 +92,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [activeTab, setActiveTab] = useState('explore');
   const [replyingTo, setReplyingTo] = useState<(Comment & { user: User }) | null>(null);
   const [repliesWithUsers, setRepliesWithUsers] = useState<{ [commentId: string]: (Reply & { user: User })[] }>({});
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportingPost, setReportingPost] = useState<(Post & { user: User }) | null>(null);
+  const [reportReason, setReportReason] = useState('');
   const currentUser = auth.currentUser;
 
   // Fetch current user data
@@ -607,6 +611,35 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     }
   };
 
+  const handleReport = async () => {
+    if (!reportingPost || !reportReason.trim()) {
+      Alert.alert('Error', 'Please provide a reason for the report');
+      return;
+    }
+
+    if (!currentUser) return;
+
+    try {
+      await createReport(
+        'post',
+        reportingPost.id,
+        reportReason,
+        {
+          postContent: reportingPost.content,
+          userId: reportingPost.userId,
+          userName: reportingPost.user?.displayName || 'Unknown user'
+        }
+      );
+
+      Alert.alert('Success', 'Report submitted successfully. Our team will review it.');
+      setReportModalVisible(false);
+      setReportingPost(null);
+      setReportReason('');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to submit report');
+    }
+  };
+
   const isFollowing = (userId: string): boolean => {
     return currentUserData?.following?.includes(userId) || false;
   };
@@ -744,8 +777,14 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             <Text style={styles.actionText}>💬 {item.comments}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton}>
-            <Text style={styles.actionText}>🔄 {item.shares}</Text>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => {
+              setReportingPost(item);
+              setReportModalVisible(true);
+            }}
+          >
+            <Text style={styles.actionText}>⚠️ Report</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1074,6 +1113,82 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
                   )}
                 </View>
               </SafeAreaView>
+            </LinearGradient>
+          </View>
+        </Modal>
+        
+        {/* Report Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={reportModalVisible}
+          onRequestClose={() => setReportModalVisible(false)}
+        >
+          <View style={styles.reportModalContainer}>
+            <LinearGradient colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.9)']} style={styles.reportModalGradient}>
+              <View style={styles.reportModalContent}>
+                <View style={styles.reportModalHeader}>
+                  <Text style={styles.reportModalTitle}>Report Post</Text>
+                  <TouchableOpacity 
+                    style={styles.closeReportButton} 
+                    onPress={() => {
+                      setReportModalVisible(false);
+                      setReportingPost(null);
+                      setReportReason('');
+                    }}
+                  >
+                    <Text style={styles.closeReportButtonText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.reportModalDescription}>
+                  Please select or describe why you're reporting this post:
+                </Text>
+
+                {/* Predefined reasons */}
+                <ScrollView style={styles.reasonsList}>
+                  {['Spam', 'Inappropriate content', 'Harassment', 'Misinformation', 'Violence', 'Hate speech', 'Other'].map((reason) => (
+                    <TouchableOpacity
+                      key={reason}
+                      style={[
+                        styles.reasonButton,
+                        reportReason === reason && styles.reasonButtonSelected
+                      ]}
+                      onPress={() => setReportReason(reason)}
+                    >
+                      <Text style={[
+                        styles.reasonText,
+                        reportReason === reason && styles.reasonTextSelected
+                      ]}>
+                        {reason}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* Custom reason input */}
+                <View style={styles.customReasonContainer}>
+                  <Text style={styles.customReasonLabel}>Or provide a custom reason:</Text>
+                  <TextInput
+                    style={styles.customReasonInput}
+                    placeholder="Describe the issue..."
+                    placeholderTextColor="#888"
+                    value={reportReason}
+                    onChangeText={setReportReason}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+
+                {/* Submit button */}
+                <TouchableOpacity
+                  style={[styles.submitReportButton, !reportReason.trim() && styles.submitReportButtonDisabled]}
+                  onPress={handleReport}
+                  disabled={!reportReason.trim()}
+                >
+                  <Text style={styles.submitReportButtonText}>Submit Report</Text>
+                </TouchableOpacity>
+              </View>
             </LinearGradient>
           </View>
         </Modal>
@@ -1611,6 +1726,104 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 14,
     fontStyle: 'italic',
+  },
+  reportModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  reportModalGradient: {
+    width: '90%',
+    maxWidth: 500,
+    borderRadius: 15,
+  },
+  reportModalContent: {
+    padding: 20,
+  },
+  reportModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  reportModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  closeReportButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeReportButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  reportModalDescription: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    marginBottom: 15,
+  },
+  reasonsList: {
+    maxHeight: 200,
+    marginBottom: 15,
+  },
+  reasonButton: {
+    padding: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  reasonButtonSelected: {
+    backgroundColor: 'rgba(118, 75, 162, 0.5)',
+    borderColor: 'rgba(118, 75, 162, 0.8)',
+  },
+  reasonText: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+  },
+  reasonTextSelected: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  customReasonContainer: {
+    marginBottom: 20,
+  },
+  customReasonLabel: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  customReasonInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+    color: 'white',
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  submitReportButton: {
+    backgroundColor: 'rgba(118, 75, 162, 0.8)',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitReportButtonDisabled: {
+    backgroundColor: 'rgba(118, 75, 162, 0.3)',
+  },
+  submitReportButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

@@ -12,9 +12,10 @@ import PostsFeedScreen from '../screens/PostsFeedScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
 import AchievementsScreen from '../screens/AchievementsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import AdminScreen from '../screens/AdminScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
-type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements' | 'profile';
+type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements' | 'profile' | 'admin';
 
 const { width: screenWidth } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
@@ -121,6 +122,14 @@ const AuthNavigator: React.FC = () => {
     setCurrentScreen('home');
   };
 
+  const handleNavigateToAdmin = () => {
+    setCurrentScreen('admin');
+  };
+
+  const handleBackFromAdmin = () => {
+    setCurrentScreen('profile');
+  };
+
   // Show loading screen while checking auth state
   if (authState === 'loading') {
     return null; // You can add a loading spinner here later
@@ -156,6 +165,12 @@ const AuthNavigator: React.FC = () => {
         return (
           <CombinedMessagesScreen
             onBack={handleBackFromFriends}
+            onNavigateToHome={handleNavigateToHome}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
           />
         );
       case 'posts-feed':
@@ -219,6 +234,19 @@ const AuthNavigator: React.FC = () => {
           <ProfileScreen
             userId={profileUserId}
             onBack={handleBackFromProfile}
+            onNavigateToHome={handleNavigateToHome}
+            onNavigateToFriends={handleNavigateToFriends}
+            onNavigateToPostsFeed={handleNavigateToPostsFeed}
+            onNavigateToCreatePost={handleNavigateToCreatePost}
+            onNavigateToAchievements={handleNavigateToAchievements}
+            onNavigateToProfile={handleNavigateToProfile}
+            onNavigateToAdmin={handleNavigateToAdmin}
+          />
+        );
+      case 'admin':
+        return (
+          <AdminScreen
+            onBack={handleBackFromAdmin}
             onNavigateToHome={handleNavigateToHome}
             onNavigateToFriends={handleNavigateToFriends}
             onNavigateToPostsFeed={handleNavigateToPostsFeed}

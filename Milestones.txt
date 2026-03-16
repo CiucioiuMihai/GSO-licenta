@@ -15,6 +15,6 @@ Backend:Firebase
 -achievements/badges-done
 -Offline Mode-50%(na-m testat full)
 -Notificari
--Admin mode
+-Admin mode-done
 -chatbot-done (Google Gemini AI, works on web+android+iOS)
 titlu,descriere

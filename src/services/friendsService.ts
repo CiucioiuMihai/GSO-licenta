@@ -258,6 +258,11 @@ export const sendDirectMessage = async (toUserId: string, message: string): Prom
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Not authenticated');
 
+  // Get sender's display name for notification
+  const senderRef = doc(db, 'users', currentUser.uid);
+  const senderDoc = await getDoc(senderRef);
+  const senderName = senderDoc.exists() ? senderDoc.data()?.displayName || 'Someone' : 'Someone';
+
   // Create conversation ID (consistent regardless of who sends first)
   const participantIds = [currentUser.uid, toUserId].sort();
   const conversationId = participantIds.join('_');
@@ -296,6 +301,21 @@ export const sendDirectMessage = async (toUserId: string, message: string): Prom
   };
 
   await addDoc(collection(db, 'directMessages'), directMessage);
+
+  // Send notification to recipient
+  try {
+    const { sendMessageNotification } = await import('./notificationService');
+    await sendMessageNotification(
+      toUserId,
+      currentUser.uid,
+      senderName,
+      message,
+      conversationId
+    );
+  } catch (error) {
+    console.error('Error sending message notification:', error);
+    // Don't fail the message send if notification fails
+  }
 };
 
 // Get messages for a conversation
@@ -449,6 +469,20 @@ export const sendBotMessage = async (message: string): Promise<void> => {
   };
 
   await addDoc(collection(db, 'directMessages'), directMessage);
+  
+  // Send notification to user for bot response
+  try {
+    const { sendMessageNotification } = await import('./notificationService');
+    await sendMessageNotification(
+      currentUser.uid,
+      BOT_USER_ID,
+      'GSO Assistant',
+      message,
+      conversationId
+    );
+  } catch (error) {
+    console.error('Error sending bot message notification:', error);
+  }
 };
 
 /**

@@ -2,6 +2,7 @@ export interface User {
   id: string;
   displayName: string;
   email: string;
+  role?: 'user' | 'admin';
   profilePicture?: string;
   bio?: string;
   xp: number;
@@ -159,7 +160,7 @@ export type LevelTier = 'newcomer' | 'regular' | 'active' | 'power' | 'elite' | 
 export interface Notification {
   id: string;
   userId: string;
-  type: 'friend_request' | 'friend_accepted' | 'new_follower' | 'post_liked' | 'comment_added' | 'achievement_unlocked';
+  type: 'friend_request' | 'friend_accepted' | 'new_follower' | 'post_liked' | 'comment_added' | 'achievement_unlocked' | 'message';
   fromUserId?: string;
   message: string;
   data?: any;
@@ -194,16 +195,6 @@ export interface Conversation {
   lastMessageAt: Date;
   otherUserName?: string; // Populated on the client side
   [key: `unreadCount_${string}`]: number;
-}
-
-export interface Report {
-  id: string;
-  reporterId: string;
-  contentId: string;
-  contentType: 'post' | 'comment' | 'user';
-  reason: string;
-  status: 'pending' | 'resolved' | 'dismissed';
-  createdAt: Date;
 }
 
 export interface PrivacySettings {
@@ -404,3 +395,24 @@ export const XP_REWARDS: Record<XPSource['action'], number> = {
   add_friend: 20,
   daily_login: 5,
 };
+
+export interface Report {
+  id: string;
+  reportedBy: string; // User ID who reported
+  reportedItem: {
+    type: 'post' | 'comment' | 'user';
+    id: string;
+  };
+  reason: string;
+  status: 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+  reviewedBy?: string; // Admin user ID
+  resolution?: string;
+  createdAt: Date;
+  reviewedAt?: Date;
+  details?: {
+    postContent?: string;
+    commentText?: string;
+    userId?: string;
+    userName?: string;
+  };
+}

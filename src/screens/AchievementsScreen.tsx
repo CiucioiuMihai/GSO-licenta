@@ -323,7 +323,11 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
             </View>
           </View>
 
-          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.scrollView} 
+            contentContainerStyle={styles.scrollViewContent}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Level Progress Card */}
             {renderLevelCard()}
 
@@ -412,6 +416,9 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     paddingHorizontal: 16,
+  },
+  scrollViewContent: {
+    paddingBottom: 80,
   },
   levelCard: {
     marginBottom: 20,

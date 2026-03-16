@@ -34,6 +34,7 @@ interface ProfileScreenProps {
   onNavigateToCreatePost: () => void;
   onNavigateToAchievements: () => void;
   onNavigateToProfile: (userId?: string) => void;
+  onNavigateToAdmin?: () => void;
 }
 
 const { width } = Dimensions.get('window');
@@ -46,7 +47,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToPostsFeed,
   onNavigateToCreatePost,
   onNavigateToAchievements,
-  onNavigateToProfile
+  onNavigateToProfile,
+  onNavigateToAdmin
 }) => {
   const [userData, setUserData] = useState<User | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
@@ -257,7 +259,11 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
           )}
         </View>
 
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.scrollView} 
+          contentContainerStyle={styles.scrollViewContent}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Profile Info Card */}
           <View style={styles.profileCard}>
             {/* Profile Picture */}
@@ -341,6 +347,22 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Admin Dashboard Button */}
+          {isOwnProfile && userData?.role === 'admin' && onNavigateToAdmin && (
+            <TouchableOpacity 
+              style={styles.adminButton}
+              onPress={onNavigateToAdmin}
+            >
+              <LinearGradient
+                colors={['rgba(220, 20, 60, 0.8)', 'rgba(139, 0, 0, 0.8)']}
+                style={styles.adminButtonGradient}
+              >
+                <Text style={styles.adminButtonIcon}>⚠️</Text>
+                <Text style={styles.adminButtonText}>Admin Dashboard</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
 
           {/* Achievements Section */}
           <View style={styles.achievementsSection}>
@@ -446,6 +468,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    paddingBottom: 80,
   },
   profileCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -708,6 +733,34 @@ const styles = StyleSheet.create({
   emptyPostsSubtext: {
     fontSize: 14,
     color: '#666',
+  },
+  adminButton: {
+    marginHorizontal: 20,
+    marginTop: 15,
+    marginBottom: 5,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  adminButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+  },
+  adminButtonIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  adminButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
