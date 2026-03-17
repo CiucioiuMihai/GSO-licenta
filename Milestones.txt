@@ -14,12 +14,12 @@ Backend:Firebase
 -Sistem de nivele pentru useri-trebe afisate(exista logica deja)-done
 -achievements/badges-done
 -Offline Mode-50%(na-m testat full)
--Notificari
+-Notificari-done
 -Admin mode-done
 -chatbot-done (Google Gemini AI, works on web+android+iOS)
-chunking la imagini
-transformare imagine la o limita
+chunking la imagini-done
+transformare imagine la o limita-done
 download
-leaderboard
+leaderboard-done
 descriere mai complexa la chatbot
 titlu,descriere

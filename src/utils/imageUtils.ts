@@ -1,6 +1,21 @@
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform } from 'react-native';
 import { ImagePickerResult, PostImage } from '../types';
+
+export interface ImageTransformLimits {
+  maxDimension: number;
+  targetMaxBytes: number;
+  minQuality: number;
+  chunkSize: number;
+}
+
+export const FIRESTORE_IMAGE_LIMITS: ImageTransformLimits = {
+  maxDimension: 1600,
+  targetMaxBytes: 350 * 1024,
+  minQuality: 0.45,
+  chunkSize: 95_000,
+};
 
 export interface ImagePickerOptions {
   mediaType?: 'photo' | 'video' | 'mixed';
@@ -17,6 +32,126 @@ export interface CompressionOptions {
   maxHeight: number;
   quality: number;
 }
+
+const stripDataUrlPrefix = (value: string): string => {
+  if (!value) return '';
+  return value.startsWith('data:') ? value.split(',')[1] : value;
+};
+
+const ensureDataUrl = (value: string, mimeType = 'image/jpeg'): string => {
+  if (!value) return '';
+  return value.startsWith('data:') ? value : `data:${mimeType};base64,${value}`;
+};
+
+export const chunkBase64 = (base64: string, chunkSize = FIRESTORE_IMAGE_LIMITS.chunkSize): string[] => {
+  const clean = stripDataUrlPrefix(base64);
+  const chunks: string[] = [];
+  for (let i = 0; i < clean.length; i += chunkSize) {
+    chunks.push(clean.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
+
+export const unchunkBase64 = (chunks: string[], mimeType = 'image/jpeg'): string => {
+  if (!chunks?.length) return '';
+  return ensureDataUrl(chunks.join(''), mimeType);
+};
+
+export const normalizeImagesForFirestore = (images: PostImage[] = []): PostImage[] => {
+  return images.map((image) => {
+    const mimeType = image.mimeType || 'image/jpeg';
+    const chunks = image.chunks?.length ? image.chunks : chunkBase64(image.data, FIRESTORE_IMAGE_LIMITS.chunkSize);
+    return {
+      ...image,
+      data: '',
+      mimeType,
+      chunks,
+      chunkCount: chunks.length,
+      chunked: true,
+      size: image.size || Math.floor((chunks.join('').length * 3) / 4),
+    };
+  });
+};
+
+export const hydrateImagesFromFirestore = (images: PostImage[] = []): PostImage[] => {
+  return images.map((image) => {
+    if (image.data && image.data.length > 0) {
+      return {
+        ...image,
+        data: ensureDataUrl(image.data, image.mimeType || 'image/jpeg'),
+      };
+    }
+
+    if (image.chunks?.length) {
+      return {
+        ...image,
+        data: unchunkBase64(image.chunks, image.mimeType || 'image/jpeg'),
+      };
+    }
+
+    return image;
+  });
+};
+
+export const prepareImageForPost = async (
+  asset: { uri: string; width?: number; height?: number },
+  limits: ImageTransformLimits = FIRESTORE_IMAGE_LIMITS
+): Promise<PostImage> => {
+  const sourceWidth = asset.width || limits.maxDimension;
+  const sourceHeight = asset.height || limits.maxDimension;
+  const scale = Math.min(1, limits.maxDimension / Math.max(sourceWidth, sourceHeight));
+
+  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+
+  let bestBase64 = '';
+  let bestWidth = targetWidth;
+  let bestHeight = targetHeight;
+
+  for (let quality = 0.9; quality >= limits.minQuality; quality -= 0.1) {
+    const manipulated = await ImageManipulator.manipulateAsync(
+      asset.uri,
+      [{ resize: { width: targetWidth, height: targetHeight } }],
+      {
+        compress: Number(quality.toFixed(2)),
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      }
+    );
+
+    if (!manipulated.base64) {
+      continue;
+    }
+
+    bestBase64 = manipulated.base64;
+    bestWidth = manipulated.width;
+    bestHeight = manipulated.height;
+
+    const approxBytes = Math.floor((manipulated.base64.length * 3) / 4);
+    if (approxBytes <= limits.targetMaxBytes) {
+      break;
+    }
+  }
+
+  if (!bestBase64) {
+    throw new Error('Image processing failed. Please try another image.');
+  }
+
+  const chunks = chunkBase64(bestBase64, limits.chunkSize);
+  const size = Math.floor((bestBase64.length * 3) / 4);
+
+  return {
+    data: ensureDataUrl(bestBase64, 'image/jpeg'),
+    width: bestWidth,
+    height: bestHeight,
+    size,
+    sourceUri: asset.uri,
+    mimeType: 'image/jpeg',
+    chunks,
+    chunkCount: chunks.length,
+    chunked: true,
+  };
+};
 
 // Request permissions for image picker
 export const requestImagePickerPermissions = async (): Promise<boolean> => {

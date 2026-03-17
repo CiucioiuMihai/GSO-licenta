@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -55,6 +55,7 @@ interface PostsFeedScreenProps {
 const { width } = Dimensions.get('window');
 
 type FilterType = 'all' | 'following' | 'friends' | 'tag';
+const MAX_FEED_POSTS = 20;
 
 const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ 
   onCreatePost, 
@@ -74,7 +75,6 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
-  const [visiblePosts, setVisiblePosts] = useState<Set<string>>(new Set());
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [postComments, setPostComments] = useState<Comment[]>([]);
   const [commentsWithUsers, setCommentsWithUsers] = useState<(Comment & { user: User })[]>([]);
@@ -98,6 +98,11 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [reportingPost, setReportingPost] = useState<(Post & { user: User }) | null>(null);
   const [reportReason, setReportReason] = useState('');
   const currentUser = auth.currentUser;
+
+  const capPosts = useCallback(<T extends { id: string }>(items: T[]): T[] => {
+    if (items.length <= MAX_FEED_POSTS) return items;
+    return items.slice(items.length - MAX_FEED_POSTS);
+  }, []);
 
   // Fetch current user data
   useEffect(() => {
@@ -123,10 +128,10 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         try {
           const result = await getPostsPaginated(3);
           console.log(`📥 Loaded ${result.posts.length} posts (initial load)`);
-          setPosts(result.posts);
+          setPosts(capPosts(result.posts));
           setLastVisibleDoc(result.lastVisible);
           setHasMore(result.hasMore);
-          loadUsersForPosts(result.posts);
+          loadUsersForPosts(capPosts(result.posts));
         } catch (error) {
           console.error('Error fetching initial posts:', error);
           setLoading(false);
@@ -149,8 +154,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
               break;
           }
           
-          setPosts(fetchedPosts);
-          loadUsersForPosts(fetchedPosts);
+          setPosts(capPosts(fetchedPosts));
+          loadUsersForPosts(capPosts(fetchedPosts));
         } catch (error) {
           console.error('Error fetching posts:', error);
           setLoading(false);
@@ -180,7 +185,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       const existingPostIds = new Set(posts.map(p => p.id));
       const newPosts = result.posts.filter(p => !existingPostIds.has(p.id));
       
-      setPosts(prevPosts => [...prevPosts, ...newPosts]);
+      setPosts(prevPosts => capPosts([...prevPosts, ...newPosts]));
       setLastVisibleDoc(result.lastVisible);
       setHasMore(result.hasMore);
       
@@ -195,7 +200,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       setPostsWithUsers(prevPosts => {
         const existingIds = new Set(prevPosts.map(p => p.id));
         const uniqueNewPosts = newPostsWithUserData.filter(p => p.user && !existingIds.has(p.id));
-        return [...prevPosts, ...uniqueNewPosts];
+        return capPosts([...prevPosts, ...uniqueNewPosts]);
       });
     } catch (error) {
       console.error('Error loading more posts:', error);
@@ -205,18 +210,13 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   };
 
   // Track viewable items for logging
-  const onViewableItemsChanged = useRef(({ viewableItems, changed }: any) => {
+  const onViewableItemsChanged = useRef(({ changed }: any) => {
+    if (!__DEV__) return;
     changed.forEach((item: any) => {
       if (item.isViewable) {
         console.log(`👁️ Post ${item.item.id.substring(0, 8)}... is now VISIBLE`);
-        setVisiblePosts(prev => new Set(prev).add(item.item.id));
       } else {
         console.log(`👋 Post ${item.item.id.substring(0, 8)}... is now HIDDEN`);
-        setVisiblePosts(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(item.item.id);
-          return newSet;
-        });
       }
     });
   }).current;
@@ -234,7 +234,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
           return { ...post, user: user! };
         })
       );
-      setPostsWithUsers(postsWithUserData.filter(p => p.user));
+      setPostsWithUsers(capPosts(postsWithUserData.filter(p => p.user)));
       setLoading(false);
       setRefreshing(false);
     } catch (error) {
@@ -470,6 +470,58 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     setSelectedImage(selectedPostImages[newIndex].data);
   };
 
+  const handleDownloadImage = async () => {
+    try {
+      const imageUri = selectedImage;
+      if (!imageUri) {
+        Alert.alert('Error', 'No image available to download.');
+        return;
+      }
+
+      if (Platform.OS === 'web') {
+        const link = document.createElement('a');
+        link.href = imageUri;
+        link.download = `gso-image-${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
+      const FileSystem = await import('expo-file-system/legacy');
+      const MediaLibrary = await import('expo-media-library');
+
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow media library access to save images.');
+        return;
+      }
+
+      const fileUri = `${FileSystem.cacheDirectory}gso-image-${Date.now()}.jpg`;
+      let localUri = fileUri;
+
+      if (imageUri.startsWith('data:image')) {
+        const base64Data = imageUri.split(',')[1] || '';
+        await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } else {
+        const downloadResult = await FileSystem.downloadAsync(imageUri, fileUri);
+        localUri = downloadResult.uri;
+      }
+
+      const asset = await MediaLibrary.createAssetAsync(localUri);
+      await MediaLibrary.createAlbumAsync('GSO', asset, false).catch(() => {});
+
+      Alert.alert('Saved', 'Image downloaded to your gallery.');
+    } catch (error: any) {
+      Alert.alert(
+        'Download unavailable',
+        'Native download module is not ready. Rebuild the Android app/dev client after installing new Expo modules.'
+      );
+    }
+  };
+
   const handleAddComment = async () => {
     if (!commentText.trim() || !selectedPost) return;
 
@@ -537,10 +589,10 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       try {
         const result = await getPostsPaginated(3);
         console.log(`🔄 Refreshed feed - Loaded ${result.posts.length} posts`);
-        setPosts(result.posts);
+        setPosts(capPosts(result.posts));
         setLastVisibleDoc(result.lastVisible);
         setHasMore(result.hasMore);
-        loadUsersForPosts(result.posts);
+        loadUsersForPosts(capPosts(result.posts));
       } catch (error) {
         console.error('Error refreshing posts:', error);
         setRefreshing(false);
@@ -560,8 +612,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       const fetchTagPosts = async () => {
         try {
           const fetchedPosts = await getPostsByTagStatic(tagFilter.trim());
-          setPosts(fetchedPosts);
-          loadUsersForPosts(fetchedPosts);
+          setPosts(capPosts(fetchedPosts));
+          loadUsersForPosts(capPosts(fetchedPosts));
         } catch (error) {
           console.error('Error fetching posts by tag:', error);
           setLoading(false);
@@ -667,7 +719,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     }
   };
 
-  const renderPost = ({ item }: { item: Post & { user: User } }) => {
+  const renderPost = useCallback(({ item }: { item: Post & { user: User } }) => {
     const isLiked = item.likedBy.includes(currentUser?.uid || '');
     const isOwnPost = item.userId === currentUser?.uid;
     const userIsFriend = isFriend(item.userId);
@@ -793,7 +845,20 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         </View>
       </View>
     );
-  };
+  }, [
+    capPosts,
+    currentUser?.uid,
+    currentUserData?.friends,
+    currentUserData?.following,
+    onNavigateToProfile,
+    handleUnfollowUser,
+    handleFollowUser,
+    handleLikePost,
+    openComments,
+    formatTime,
+  ]);
+
+  const keyExtractor = useCallback((item: Post & { user: User }) => item.id, []);
 
   const renderReply = (reply: Reply & { user: User }) => {
     const isLiked = reply.likedBy.includes(currentUser?.uid || '');
@@ -1027,16 +1092,21 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
           <FlatList
             data={postsWithUsers}
             renderItem={renderPost}
-            keyExtractor={(item) => item.id}
+            keyExtractor={keyExtractor}
             style={styles.feed}
             contentContainerStyle={styles.feedContent}
             refreshing={refreshing}
             onRefresh={onRefresh}
             showsVerticalScrollIndicator={false}
             onEndReached={loadMorePosts}
-            onEndReachedThreshold={0.5}
+            onEndReachedThreshold={0.3}
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewabilityConfig}
+            removeClippedSubviews={true}
+            initialNumToRender={4}
+            maxToRenderPerBatch={4}
+            windowSize={5}
+            updateCellsBatchingPeriod={80}
             ListFooterComponent={
               isLoadingMore ? (
                 <View style={styles.loadingMoreContainer}>
@@ -1083,11 +1153,19 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
                   >
                     <Text style={styles.closeImageButtonText}>✕</Text>
                   </TouchableOpacity>
-                  {selectedPostImages.length > 1 && (
-                    <Text style={styles.imageCounter}>
-                      {selectedImageIndex + 1} / {selectedPostImages.length}
-                    </Text>
-                  )}
+                  <View style={styles.imageHeaderRight}>
+                    {selectedPostImages.length > 1 && (
+                      <Text style={styles.imageCounter}>
+                        {selectedImageIndex + 1} / {selectedPostImages.length}
+                      </Text>
+                    )}
+                    <TouchableOpacity
+                      style={styles.downloadImageButton}
+                      onPress={handleDownloadImage}
+                    >
+                      <Text style={styles.downloadImageButtonText}>Download</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 
                 {/* Image */}
@@ -1584,6 +1662,22 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '500',
+  },
+  imageHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  downloadImageButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  downloadImageButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '700',
   },
   imageModalImageContainer: {
     flex: 1,

@@ -68,6 +68,11 @@ export interface PostImage {
   width: number;
   height: number;
   size: number;
+  sourceUri?: string;
+  chunks?: string[];
+  chunkCount?: number;
+  mimeType?: string;
+  chunked?: boolean;
 }
 
 export interface Comment {

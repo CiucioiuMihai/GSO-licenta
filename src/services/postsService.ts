@@ -22,6 +22,20 @@ import {
 import { auth, db } from './firebase';
 import { Post, Comment, Reply, Tag, User } from '@/types';
 import { calculateLevel } from '@/utils/gamification';
+import { normalizeImagesForFirestore, hydrateImagesFromFirestore } from '@/utils/imageUtils';
+
+const MAX_POST_IMAGE_CHARS = 700000;
+
+const mapPostDoc = (docSnap: any): Post => {
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    ...data,
+    images: hydrateImagesFromFirestore(data.images || []),
+    createdAt: data.createdAt?.toDate() || new Date(),
+    updatedAt: data.updatedAt?.toDate() || new Date(),
+  } as Post;
+};
 
 // Post Operations
 export const createPost = async (content: string, tags: string[] = [], images?: any[]): Promise<void> => {
@@ -31,13 +45,19 @@ export const createPost = async (content: string, tags: string[] = [], images?: 
   const batch = writeBatch(db);
 
   try {
+    const normalizedImages = normalizeImagesForFirestore(images || []);
+    const imageChars = normalizedImages.reduce((sum, img) => sum + (img.chunks?.join('').length || 0), 0);
+    if (imageChars > MAX_POST_IMAGE_CHARS) {
+      throw new Error('Images are too large for a single post. Please use fewer or smaller images.');
+    }
+
     // Create post
     const postRef = doc(collection(db, 'posts'));
     const postData: Omit<Post, 'id'> = {
       userId: currentUser.uid,
       content,
       tags,
-      images: images || [],
+      images: normalizedImages,
       likes: 0,
       comments: 0,
       shares: 0,
@@ -81,12 +101,7 @@ export const getPosts = (callback: (posts: Post[]) => void, limitCount = 20) => 
       limit(limitCount)
     ),
     (snapshot) => {
-      const posts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Post[];
+      const posts = snapshot.docs.map(mapPostDoc) as Post[];
       callback(posts);
     }
   );
@@ -114,12 +129,7 @@ export const getPostsPaginated = async (
     }
 
     const snapshot = await getDocs(q);
-    const posts = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Post[];
+    const posts = snapshot.docs.map(mapPostDoc) as Post[];
 
     const lastVisible = snapshot.docs[snapshot.docs.length - 1];
     const hasMore = snapshot.docs.length === limitCount;
@@ -139,12 +149,7 @@ export const getUserPosts = (userId: string, callback: (posts: Post[]) => void) 
       orderBy('createdAt', 'desc')
     ),
     (snapshot) => {
-      const posts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Post[];
+      const posts = snapshot.docs.map(mapPostDoc) as Post[];
       callback(posts);
     }
   );
@@ -159,12 +164,7 @@ export const getPostsByTag = (tag: string, callback: (posts: Post[]) => void) =>
       limit(20)
     ),
     (snapshot) => {
-      const posts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Post[];
+      const posts = snapshot.docs.map(mapPostDoc) as Post[];
       callback(posts);
     }
   );
@@ -197,12 +197,7 @@ export const getPostsFromFollowing = async (userId: string): Promise<Post[]> => 
         limit(20)
       );
       const postsSnapshot = await getDocs(postsQuery);
-      const posts = postsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Post[];
+      const posts = postsSnapshot.docs.map(mapPostDoc) as Post[];
       allPosts.push(...posts);
     }
     
@@ -241,12 +236,7 @@ export const getPostsFromFriends = async (userId: string): Promise<Post[]> => {
         limit(20)
       );
       const postsSnapshot = await getDocs(postsQuery);
-      const posts = postsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Post[];
+      const posts = postsSnapshot.docs.map(mapPostDoc) as Post[];
       allPosts.push(...posts);
     }
     
@@ -267,12 +257,7 @@ export const getPostsByTagStatic = async (tag: string): Promise<Post[]> => {
       limit(20)
     );
     const postsSnapshot = await getDocs(postsQuery);
-    return postsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Post[];
+    return postsSnapshot.docs.map(mapPostDoc) as Post[];
   } catch (error) {
     console.error('Error getting posts by tag:', error);
     return [];

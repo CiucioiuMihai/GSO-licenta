@@ -18,6 +18,8 @@ import { createPost, getTrendingTags, searchTags, getUserDataWithCounts } from '
 import { Tag, User } from '@/types';
 import { auth } from '@/services/firebase';
 import Navbar from '@/components/Navbar';
+import { FIRESTORE_IMAGE_LIMITS, prepareImageForPost } from '@/utils/imageUtils';
+import { PostImage } from '@/types';
 
 interface CreatePostScreenProps {
   onBack: () => void;
@@ -32,6 +34,25 @@ interface CreatePostScreenProps {
 }
 
 const { width } = Dimensions.get('window');
+const FIRESTORE_SAFE_IMAGE_PAYLOAD_CHARS = 700000;
+
+const getAdaptiveImageLimits = (imageCount: number) => {
+  if (imageCount >= 4) {
+    return { ...FIRESTORE_IMAGE_LIMITS, maxDimension: 1280, targetMaxBytes: 120 * 1024 };
+  }
+  if (imageCount === 3) {
+    return { ...FIRESTORE_IMAGE_LIMITS, maxDimension: 1400, targetMaxBytes: 150 * 1024 };
+  }
+  if (imageCount === 2) {
+    return { ...FIRESTORE_IMAGE_LIMITS, maxDimension: 1500, targetMaxBytes: 210 * 1024 };
+  }
+  return { ...FIRESTORE_IMAGE_LIMITS, maxDimension: 1600, targetMaxBytes: 320 * 1024 };
+};
+
+const getImageBase64Length = (image: PostImage): number => {
+  if (!image?.data) return 0;
+  return image.data.startsWith('data:') ? image.data.split(',')[1]?.length || 0 : image.data.length;
+};
 
 const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ 
   onBack, 
@@ -134,13 +155,13 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         if (images.length < 4) {
-          // Convert to our PostImage format
-          const postImage = {
-            data: `data:image/jpeg;base64,${asset.base64}`, // Add data URL prefix
-            width: asset.width || 800,
-            height: asset.height || 600,
-            size: asset.base64?.length || 0
-          };
+          const adaptiveLimits = getAdaptiveImageLimits(images.length + 1);
+          const postImage = await prepareImageForPost({
+            uri: asset.uri,
+            width: asset.width,
+            height: asset.height,
+          }, adaptiveLimits);
+
           setImages([...images, postImage]);
         } else {
           Alert.alert('Limit Reached', 'You can only add up to 4 images per post.');
@@ -169,7 +190,33 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
 
     setLoading(true);
     try {
-      await createPost(content.trim(), tags, images);
+      let processedImages = images as PostImage[];
+      let estimatedPayloadChars = processedImages.reduce((sum, image) => sum + getImageBase64Length(image), 0);
+
+      // Reprocess all images with stricter limits if payload is too large.
+      if (estimatedPayloadChars > FIRESTORE_SAFE_IMAGE_PAYLOAD_CHARS) {
+        const strictLimits = getAdaptiveImageLimits(processedImages.length);
+        const reprocessed = await Promise.all(
+          processedImages.map(async (img) => {
+            if (!img.sourceUri) return img;
+            return prepareImageForPost({ uri: img.sourceUri, width: img.width, height: img.height }, strictLimits);
+          })
+        );
+
+        processedImages = reprocessed;
+        estimatedPayloadChars = processedImages.reduce((sum, image) => sum + getImageBase64Length(image), 0);
+      }
+
+      if (estimatedPayloadChars > FIRESTORE_SAFE_IMAGE_PAYLOAD_CHARS) {
+        Alert.alert(
+          'Images Too Large',
+          'This post is still too large for Firestore. Please remove one image or choose smaller photos.'
+        );
+        setLoading(false);
+        return;
+      }
+
+      await createPost(content.trim(), tags, processedImages);
       Alert.alert('Success', 'Post created successfully!');
       onPostCreated(); // Navigate immediately after post is created
     } catch (error: any) {
@@ -276,6 +323,9 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
           <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
             <Text style={styles.addImageText}>📷 Add Images ({images.length}/4)</Text>
           </TouchableOpacity>
+          <Text style={styles.imageHintText}>
+            Images are auto-optimized to max 1600px and around 350KB each before upload.
+          </Text>
 
           {/* Tags Input */}
           <View style={styles.tagsContainer}>
@@ -449,6 +499,13 @@ const styles = StyleSheet.create({
   addImageText: {
     color: 'white',
     fontSize: 16,
+  },
+  imageHintText: {
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontSize: 12,
+    marginBottom: 8,
+    marginTop: 2,
+    paddingHorizontal: 4,
   },
   tagsContainer: {
     marginVertical: 15,

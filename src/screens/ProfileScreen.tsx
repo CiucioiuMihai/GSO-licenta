@@ -12,6 +12,7 @@ import {
   Dimensions,
   FlatList,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -60,6 +61,10 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [tempProfilePicture, setTempProfilePicture] = useState('');
   const [saving, setSaving] = useState(false);
   const [navbarTab, setNavbarTab] = useState('profile');
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [selectedImage, setSelectedImage] = useState('');
+  const [selectedPostImages, setSelectedPostImages] = useState<any[]>([]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const currentUser = auth.currentUser;
   
   // Determine if viewing own profile or another user's profile
@@ -196,6 +201,72 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     return `${days}d ago`;
   };
 
+  const handleImagePress = (imageUri: string, images: any[], index: number) => {
+    setSelectedImage(imageUri);
+    setSelectedPostImages(images);
+    setSelectedImageIndex(index);
+    setImageModalVisible(true);
+  };
+
+  const navigateImage = (direction: 'prev' | 'next') => {
+    const newIndex = direction === 'prev'
+      ? (selectedImageIndex - 1 + selectedPostImages.length) % selectedPostImages.length
+      : (selectedImageIndex + 1) % selectedPostImages.length;
+
+    setSelectedImageIndex(newIndex);
+    setSelectedImage(selectedPostImages[newIndex].data);
+  };
+
+  const handleDownloadImage = async () => {
+    try {
+      if (!selectedImage) {
+        Alert.alert('Error', 'No image available to download.');
+        return;
+      }
+
+      if (Platform.OS === 'web') {
+        const link = document.createElement('a');
+        link.href = selectedImage;
+        link.download = `gso-profile-image-${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
+      const FileSystem = await import('expo-file-system/legacy');
+      const MediaLibrary = await import('expo-media-library');
+
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow media library access to save images.');
+        return;
+      }
+
+      const fileUri = `${FileSystem.cacheDirectory}gso-profile-image-${Date.now()}.jpg`;
+      let localUri = fileUri;
+
+      if (selectedImage.startsWith('data:image')) {
+        const base64Data = selectedImage.split(',')[1] || '';
+        await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } else {
+        const downloadResult = await FileSystem.downloadAsync(selectedImage, fileUri);
+        localUri = downloadResult.uri;
+      }
+
+      const asset = await MediaLibrary.createAssetAsync(localUri);
+      await MediaLibrary.createAlbumAsync('GSO', asset, false).catch(() => {});
+      Alert.alert('Saved', 'Image downloaded to your gallery.');
+    } catch (error: any) {
+      Alert.alert(
+        'Download unavailable',
+        'Native download module is not ready. Rebuild the Android app/dev client after installing new Expo modules.'
+      );
+    }
+  };
+
   const renderPost = ({ item }: { item: Post }) => (
     <View style={styles.postCard}>
       <Text style={styles.postContent}>{item.content}</Text>
@@ -207,12 +278,17 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
           style={styles.postImagesContainer}
         >
           {item.images.map((image, index) => (
-            <Image
+            <TouchableOpacity
               key={index}
-              source={{ uri: image.data }}
-              style={styles.postImage}
-              resizeMode="cover"
-            />
+              onPress={() => handleImagePress(image.data, item.images!, index)}
+              activeOpacity={0.85}
+            >
+              <Image
+                source={{ uri: image.data }}
+                style={styles.postImage}
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
           ))}
         </ScrollView>
       )}
@@ -424,6 +500,61 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             )}
           </View>
         </ScrollView>
+
+        {/* Image Modal */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={imageModalVisible}
+          onRequestClose={() => setImageModalVisible(false)}
+        >
+          <View style={styles.imageModalContainer}>
+            <LinearGradient colors={['rgba(0,0,0,0.9)', 'rgba(0,0,0,0.9)']} style={styles.imageModalGradient}>
+              <SafeAreaView style={styles.imageModalContent}>
+                <View style={styles.imageModalHeader}>
+                  <TouchableOpacity
+                    style={styles.closeImageButton}
+                    onPress={() => setImageModalVisible(false)}
+                  >
+                    <Text style={styles.closeImageButtonText}>✕</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.imageHeaderRight}>
+                    {selectedPostImages.length > 1 && (
+                      <Text style={styles.imageCounter}>
+                        {selectedImageIndex + 1} / {selectedPostImages.length}
+                      </Text>
+                    )}
+                    <TouchableOpacity style={styles.downloadImageButton} onPress={handleDownloadImage}>
+                      <Text style={styles.downloadImageButtonText}>Download</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.imageModalImageContainer}>
+                  <Image source={{ uri: selectedImage }} style={styles.fullScreenImage} resizeMode="contain" />
+
+                  {selectedPostImages.length > 1 && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.imageNavButton, styles.prevButton]}
+                        onPress={() => navigateImage('prev')}
+                      >
+                        <Text style={styles.imageNavText}>‹</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.imageNavButton, styles.nextButton]}
+                        onPress={() => navigateImage('next')}
+                      >
+                        <Text style={styles.imageNavText}>›</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </SafeAreaView>
+            </LinearGradient>
+          </View>
+        </Modal>
         
         {/* Navbar */}
         <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={userData} />
@@ -765,6 +896,91 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  imageModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalGradient: {
+    flex: 1,
+    width: '100%',
+  },
+  imageModalContent: {
+    flex: 1,
+  },
+  imageModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  closeImageButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeImageButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  imageHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  imageCounter: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  downloadImageButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  downloadImageButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  imageModalImageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '80%',
+  },
+  imageNavButton: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -24,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  prevButton: {
+    left: 14,
+  },
+  nextButton: {
+    right: 14,
+  },
+  imageNavText: {
+    color: 'white',
+    fontSize: 30,
+    lineHeight: 30,
+    fontWeight: '700',
   },
 });
 
