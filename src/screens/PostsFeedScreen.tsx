@@ -21,6 +21,7 @@ import { Post, Comment, User, Reply } from '@/types';
 import { 
   getPosts, 
   getPostsPaginated,
+  getNewerPostsSince,
   likePost, 
   getUserData, 
   addComment, 
@@ -73,7 +74,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isLoadingNewer, setIsLoadingNewer] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [hasNewer, setHasNewer] = useState(false);
   const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [postComments, setPostComments] = useState<Comment[]>([]);
@@ -99,7 +102,12 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [reportReason, setReportReason] = useState('');
   const currentUser = auth.currentUser;
 
-  const capPosts = useCallback(<T extends { id: string }>(items: T[]): T[] => {
+  const capHeadPosts = useCallback(<T extends { id: string }>(items: T[]): T[] => {
+    if (items.length <= MAX_FEED_POSTS) return items;
+    return items.slice(0, MAX_FEED_POSTS);
+  }, []);
+
+  const capTailPosts = useCallback(<T extends { id: string }>(items: T[]): T[] => {
     if (items.length <= MAX_FEED_POSTS) return items;
     return items.slice(items.length - MAX_FEED_POSTS);
   }, []);
@@ -128,10 +136,11 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         try {
           const result = await getPostsPaginated(3);
           console.log(`📥 Loaded ${result.posts.length} posts (initial load)`);
-          setPosts(capPosts(result.posts));
+          setPosts(capHeadPosts(result.posts));
           setLastVisibleDoc(result.lastVisible);
           setHasMore(result.hasMore);
-          loadUsersForPosts(capPosts(result.posts));
+          setHasNewer(false);
+          loadUsersForPosts(capHeadPosts(result.posts));
         } catch (error) {
           console.error('Error fetching initial posts:', error);
           setLoading(false);
@@ -154,8 +163,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
               break;
           }
           
-          setPosts(capPosts(fetchedPosts));
-          loadUsersForPosts(capPosts(fetchedPosts));
+          setPosts(capHeadPosts(fetchedPosts));
+          setHasNewer(false);
+          loadUsersForPosts(capHeadPosts(fetchedPosts));
         } catch (error) {
           console.error('Error fetching posts:', error);
           setLoading(false);
@@ -170,7 +180,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         unsubscribe();
       }
     };
-  }, [currentUser, activeFilter, tagFilter]);
+  }, [currentUser, activeFilter, tagFilter, capHeadPosts]);
 
   // Load more posts for infinite scroll
   const loadMorePosts = async () => {
@@ -185,9 +195,12 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       const existingPostIds = new Set(posts.map(p => p.id));
       const newPosts = result.posts.filter(p => !existingPostIds.has(p.id));
       
-      setPosts(prevPosts => capPosts([...prevPosts, ...newPosts]));
+      setPosts(prevPosts => capTailPosts([...prevPosts, ...newPosts]));
       setLastVisibleDoc(result.lastVisible);
       setHasMore(result.hasMore);
+      if (newPosts.length > 0) {
+        setHasNewer(true);
+      }
       
       // Load users for new posts
       const newPostsWithUserData = await Promise.all(
@@ -200,12 +213,52 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       setPostsWithUsers(prevPosts => {
         const existingIds = new Set(prevPosts.map(p => p.id));
         const uniqueNewPosts = newPostsWithUserData.filter(p => p.user && !existingIds.has(p.id));
-        return capPosts([...prevPosts, ...uniqueNewPosts]);
+        return capTailPosts([...prevPosts, ...uniqueNewPosts]);
       });
     } catch (error) {
       console.error('Error loading more posts:', error);
     } finally {
       setIsLoadingMore(false);
+    }
+  };
+
+  const loadNewerPosts = async () => {
+    if (isLoadingNewer || !hasNewer || activeFilter !== 'all' || posts.length === 0) return;
+
+    setIsLoadingNewer(true);
+    try {
+      const firstPostDate = posts[0]?.createdAt;
+      if (!firstPostDate) return;
+
+      const result = await getNewerPostsSince(firstPostDate, 3);
+      const existingPostIds = new Set(posts.map(p => p.id));
+      const newerPosts = result.posts.filter(p => !existingPostIds.has(p.id));
+
+      if (newerPosts.length === 0) {
+        setHasNewer(false);
+        return;
+      }
+
+      setPosts(prevPosts => capHeadPosts([...newerPosts, ...prevPosts]));
+
+      const newerPostsWithUserData = await Promise.all(
+        newerPosts.map(async (post) => {
+          const user = await getUserData(post.userId);
+          return { ...post, user: user! };
+        })
+      );
+
+      setPostsWithUsers(prevPosts => {
+        const existingIds = new Set(prevPosts.map(p => p.id));
+        const uniqueNewerPosts = newerPostsWithUserData.filter(p => p.user && !existingIds.has(p.id));
+        return capHeadPosts([...uniqueNewerPosts, ...prevPosts]);
+      });
+
+      setHasNewer(result.hasMore);
+    } catch (error) {
+      console.error('Error loading newer posts:', error);
+    } finally {
+      setIsLoadingNewer(false);
     }
   };
 
@@ -234,7 +287,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
           return { ...post, user: user! };
         })
       );
-      setPostsWithUsers(capPosts(postsWithUserData.filter(p => p.user)));
+      setPostsWithUsers(capHeadPosts(postsWithUserData.filter(p => p.user)));
       setLoading(false);
       setRefreshing(false);
     } catch (error) {
@@ -589,10 +642,11 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       try {
         const result = await getPostsPaginated(3);
         console.log(`🔄 Refreshed feed - Loaded ${result.posts.length} posts`);
-        setPosts(capPosts(result.posts));
+        setPosts(capHeadPosts(result.posts));
         setLastVisibleDoc(result.lastVisible);
         setHasMore(result.hasMore);
-        loadUsersForPosts(capPosts(result.posts));
+        setHasNewer(false);
+        loadUsersForPosts(capHeadPosts(result.posts));
       } catch (error) {
         console.error('Error refreshing posts:', error);
         setRefreshing(false);
@@ -612,8 +666,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       const fetchTagPosts = async () => {
         try {
           const fetchedPosts = await getPostsByTagStatic(tagFilter.trim());
-          setPosts(capPosts(fetchedPosts));
-          loadUsersForPosts(capPosts(fetchedPosts));
+          setPosts(capHeadPosts(fetchedPosts));
+          setHasNewer(false);
+          loadUsersForPosts(capHeadPosts(fetchedPosts));
         } catch (error) {
           console.error('Error fetching posts by tag:', error);
           setLoading(false);
@@ -846,7 +901,6 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       </View>
     );
   }, [
-    capPosts,
     currentUser?.uid,
     currentUserData?.friends,
     currentUserData?.following,
@@ -859,6 +913,14 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   ]);
 
   const keyExtractor = useCallback((item: Post & { user: User }) => item.id, []);
+
+  const handleFeedScroll = useCallback((event: any) => {
+    if (activeFilter !== 'all' || isLoadingNewer || !hasNewer) return;
+    const y = event?.nativeEvent?.contentOffset?.y ?? 0;
+    if (y <= 40) {
+      loadNewerPosts();
+    }
+  }, [activeFilter, isLoadingNewer, hasNewer, loadNewerPosts]);
 
   const renderReply = (reply: Reply & { user: User }) => {
     const isLiked = reply.likedBy.includes(currentUser?.uid || '');
@@ -1098,6 +1160,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             refreshing={refreshing}
             onRefresh={onRefresh}
             showsVerticalScrollIndicator={false}
+            onScroll={handleFeedScroll}
+            scrollEventThrottle={16}
             onEndReached={loadMorePosts}
             onEndReachedThreshold={0.3}
             onViewableItemsChanged={onViewableItemsChanged}
@@ -1107,6 +1171,17 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             maxToRenderPerBatch={4}
             windowSize={5}
             updateCellsBatchingPeriod={80}
+            ListHeaderComponent={
+              isLoadingNewer ? (
+                <View style={styles.loadingNewerContainer}>
+                  <Text style={styles.loadingNewerText}>Loading newer posts...</Text>
+                </View>
+              ) : hasNewer ? (
+                <View style={styles.newerAvailableContainer}>
+                  <Text style={styles.newerAvailableText}>Scroll up to load newer posts</Text>
+                </View>
+              ) : null
+            }
             ListFooterComponent={
               isLoadingMore ? (
                 <View style={styles.loadingMoreContainer}>
@@ -1813,6 +1888,26 @@ const styles = StyleSheet.create({
   loadingMoreText: {
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 14,
+    fontStyle: 'italic',
+  },
+  loadingNewerContainer: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingNewerText: {
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  newerAvailableContainer: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  newerAvailableText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
     fontStyle: 'italic',
   },
   endOfFeedContainer: {

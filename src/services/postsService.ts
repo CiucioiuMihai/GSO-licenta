@@ -141,6 +141,30 @@ export const getPostsPaginated = async (
   }
 };
 
+// Get posts newer than a given date (used for bidirectional paging with capped memory windows)
+export const getNewerPostsSince = async (
+  sinceDate: Date,
+  limitCount = 3
+): Promise<{ posts: Post[]; hasMore: boolean }> => {
+  try {
+    const q = query(
+      collection(db, 'posts'),
+      where('createdAt', '>', sinceDate),
+      orderBy('createdAt', 'asc'),
+      limit(limitCount)
+    );
+
+    const snapshot = await getDocs(q);
+    const posts = snapshot.docs.map(mapPostDoc).reverse() as Post[];
+    const hasMore = snapshot.docs.length === limitCount;
+
+    return { posts, hasMore };
+  } catch (error) {
+    console.error('Error fetching newer posts:', error);
+    return { posts: [], hasMore: false };
+  }
+};
+
 export const getUserPosts = (userId: string, callback: (posts: Post[]) => void) => {
   return onSnapshot(
     query(
