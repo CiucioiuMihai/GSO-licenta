@@ -1405,7 +1405,8 @@ const styles = StyleSheet.create({
     maxWidth: Platform.OS === 'web' ? 600 : '100%',
   },
   feedContent: {
-    paddingBottom: 20,
+    // Keep last post actions visible above the fixed bottom navbar
+    paddingBottom: Platform.OS === 'web' ? 90 : 170,
   },
   postContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
