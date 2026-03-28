@@ -23,6 +23,7 @@ import { auth, db } from './firebase';
 import { Post, Comment, Reply, Tag, User } from '@/types';
 import { calculateLevel } from '@/utils/gamification';
 import { normalizeImagesForFirestore, hydrateImagesFromFirestore } from '@/utils/imageUtils';
+import { BOT_USER_ID } from './chatbotService';
 
 const MAX_POST_IMAGE_CHARS = 700000;
 
@@ -87,8 +88,12 @@ export const createPost = async (content: string, tags: string[] = [], images?: 
 
     await batch.commit();
 
-    const { trackDailyQuestProgress } = await import('./levelService');
-    await trackDailyQuestProgress(currentUser.uid, 'create_post');
+    try {
+      const { trackDailyQuestProgress } = await import('./levelService');
+      await trackDailyQuestProgress(currentUser.uid, 'create_post');
+    } catch (questError) {
+      console.warn('Quest progress tracking failed for create_post:', questError);
+    }
     console.log('Post created successfully');
   } catch (error) {
     console.error('Error creating post:', error);
@@ -316,8 +321,12 @@ export const likePost = async (postId: string): Promise<void> => {
       likedBy: arrayUnion(currentUser.uid)
     });
 
-    const { trackDailyQuestProgress } = await import('./levelService');
-    await trackDailyQuestProgress(currentUser.uid, 'like_post');
+    try {
+      const { trackDailyQuestProgress } = await import('./levelService');
+      await trackDailyQuestProgress(currentUser.uid, 'like_post');
+    } catch (questError) {
+      console.warn('Quest progress tracking failed for like_post:', questError);
+    }
   }
 };
 
@@ -406,8 +415,12 @@ export const addComment = async (postId: string, text: string): Promise<void> =>
 
     await batch.commit();
 
-    const { trackDailyQuestProgress } = await import('./levelService');
-    await trackDailyQuestProgress(currentUser.uid, 'add_comment');
+    try {
+      const { trackDailyQuestProgress } = await import('./levelService');
+      await trackDailyQuestProgress(currentUser.uid, 'add_comment');
+    } catch (questError) {
+      console.warn('Quest progress tracking failed for add_comment:', questError);
+    }
     
     // Award XP to post owner (if not commenting on own post)
     if (postOwnerId !== currentUser.uid) {
@@ -612,9 +625,18 @@ export const followUser = async (targetUserId: string): Promise<void> => {
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Not authenticated');
 
+  if (!targetUserId) throw new Error('Invalid user');
+  if (targetUserId === currentUser.uid) throw new Error('You cannot follow yourself');
+  if (targetUserId === BOT_USER_ID) throw new Error('GSO Assistant cannot be followed');
+
   try {
     const userRef = doc(db, 'users', currentUser.uid);
     const targetUserRef = doc(db, 'users', targetUserId);
+
+    const targetUserDoc = await getDoc(targetUserRef);
+    if (!targetUserDoc.exists()) {
+      throw new Error('User not found');
+    }
     
     // Add to current user's following list
     await updateDoc(userRef, {
@@ -629,6 +651,10 @@ export const followUser = async (targetUserId: string): Promise<void> => {
     console.log('Successfully followed user:', targetUserId);
   } catch (error) {
     console.error('Error following user:', error);
+    const message = (error as any)?.message || '';
+    if (message.toLowerCase().includes('permission')) {
+      throw new Error('Follow failed due to permissions. Please try again after syncing rules.');
+    }
     throw error;
   }
 };
@@ -636,6 +662,10 @@ export const followUser = async (targetUserId: string): Promise<void> => {
 export const unfollowUser = async (targetUserId: string): Promise<void> => {
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Not authenticated');
+
+  if (!targetUserId) throw new Error('Invalid user');
+  if (targetUserId === currentUser.uid) throw new Error('You cannot unfollow yourself');
+  if (targetUserId === BOT_USER_ID) throw new Error('GSO Assistant cannot be unfollowed');
 
   try {
     const userRef = doc(db, 'users', currentUser.uid);
@@ -654,6 +684,10 @@ export const unfollowUser = async (targetUserId: string): Promise<void> => {
     console.log('Successfully unfollowed user:', targetUserId);
   } catch (error) {
     console.error('Error unfollowing user:', error);
+    const message = (error as any)?.message || '';
+    if (message.toLowerCase().includes('permission')) {
+      throw new Error('Unfollow failed due to permissions. Please try again after syncing rules.');
+    }
     throw error;
   }
 };

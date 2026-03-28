@@ -81,7 +81,7 @@ export const checkAchievementsForUser = (user: User): string[] => {
         isUnlocked = (user.totalLikes || 0) >= req.count;
         break;
       case 'comments':
-        // This would need to be tracked separately in user stats
+        isUnlocked = (user.totalComments || 0) >= req.count;
         break;
       case 'followers':
         isUnlocked = (user.totalFollowers || user.followers?.length || 0) >= req.count;

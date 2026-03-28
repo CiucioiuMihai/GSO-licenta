@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Platform, Dimensions } from 'react-native';
+import { Platform, BackHandler } from 'react-native';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/services/firebase';
 import LoginScreen from '@/screens/LoginScreen';
 import RegisterScreen from '@/screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
-import FriendsScreen from '../screens/FriendsScreen';
-import DirectMessagesScreen from '../screens/DirectMessagesScreen';
 import CombinedMessagesScreen from '../screens/CombinedMessagesScreen';
 import PostsFeedScreen from '../screens/PostsFeedScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
@@ -16,23 +14,39 @@ import AdminScreen from '../screens/AdminScreen';
 import LeaderboardScreen from '../screens/LeaderboardScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
-type Screen = 'login' | 'register' | 'home' | 'friends' | 'messages' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements' | 'profile' | 'admin' | 'leaderboard';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isWeb = Platform.OS === 'web';
-const isTablet = screenWidth > 768;
-
-interface MessageScreenParams {
-  conversationId: string;
-  otherUserId: string;
-}
+type Screen = 'login' | 'register' | 'home' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements' | 'profile' | 'admin' | 'leaderboard';
 
 const AuthNavigator: React.FC = () => {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
+  const [screenHistory, setScreenHistory] = useState<Screen[]>(['login']);
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [messageParams, setMessageParams] = useState<MessageScreenParams | null>(null);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
+
+  const navigateTo = (screen: Screen, options?: { replace?: boolean }) => {
+    setCurrentScreen(screen);
+    setScreenHistory((prev) => {
+      if (options?.replace) {
+        const base = prev.length > 0 ? prev.slice(0, -1) : [];
+        return [...base, screen];
+      }
+      if (prev[prev.length - 1] === screen) {
+        return prev;
+      }
+      return [...prev, screen];
+    });
+  };
+
+  const goBack = () => {
+    setScreenHistory((prev) => {
+      if (prev.length <= 1) {
+        return prev;
+      }
+      const next = prev.slice(0, -1);
+      setCurrentScreen(next[next.length - 1]);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -40,22 +54,50 @@ const AuthNavigator: React.FC = () => {
         setUser(firebaseUser);
         setAuthState('authenticated');
         setCurrentScreen('home');
+        setScreenHistory(['home']);
       } else {
         setUser(null);
         setAuthState('unauthenticated');
         setCurrentScreen('login');
+        setScreenHistory(['login']);
       }
     });
 
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const onHardwareBackPress = () => {
+      if (authState !== 'authenticated') {
+        if (currentScreen !== 'login') {
+          goBack();
+          return true;
+        }
+        return false;
+      }
+
+      if (screenHistory.length > 1) {
+        goBack();
+        return true;
+      }
+
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onHardwareBackPress);
+    return () => subscription.remove();
+  }, [authState, currentScreen, screenHistory]);
+
   const handleNavigateToRegister = () => {
-    setCurrentScreen('register');
+    navigateTo('register');
   };
 
   const handleNavigateToLogin = () => {
-    setCurrentScreen('login');
+    navigateTo('login');
   };
 
   const handleAuthSuccess = () => {
@@ -63,76 +105,61 @@ const AuthNavigator: React.FC = () => {
   };
 
   const handleNavigateToFriends = () => {
-    // Use combined screen for web/tablet, separate screens for mobile
-    if (isWeb || isTablet) {
-      setCurrentScreen('combined-messages');
-    } else {
-      setCurrentScreen('friends');
-    }
+    navigateTo('combined-messages');
   };
 
   const handleNavigateToHome = () => {
-    setCurrentScreen('home');
+    navigateTo('home');
   };
 
   const handleNavigateToPostsFeed = () => {
-    setCurrentScreen('posts-feed');
+    navigateTo('posts-feed');
   };
 
   const handleNavigateToCreatePost = () => {
-    setCurrentScreen('create-post');
+    navigateTo('create-post');
   };
 
   const handleNavigateToAchievements = () => {
-    setCurrentScreen('achievements');
+    navigateTo('achievements');
   };
 
   const handleNavigateToProfile = (userId?: string) => {
     setProfileUserId(userId || null);
-    setCurrentScreen('profile');
+    navigateTo('profile');
   };
 
   const handlePostCreated = () => {
-    setCurrentScreen('posts-feed');
+    navigateTo('posts-feed', { replace: true });
   };
 
   const handleBackFromPosts = () => {
-    setCurrentScreen('home');
-  };
-
-  const handleStartChat = (otherUserId: string, conversationId: string) => {
-    setMessageParams({ conversationId, otherUserId });
-    setCurrentScreen('messages');
-  };
-
-  const handleBackFromMessages = () => {
-    setMessageParams(null);
-    setCurrentScreen('friends');
+    goBack();
   };
 
   const handleBackFromFriends = () => {
-    setCurrentScreen('home');
+    goBack();
   };
 
   const handleBackFromAchievements = () => {
-    setCurrentScreen('home');
+    goBack();
   };
 
   const handleBackFromProfile = () => {
     setProfileUserId(null);
-    setCurrentScreen('home');
+    goBack();
   };
 
   const handleNavigateToAdmin = () => {
-    setCurrentScreen('admin');
+    navigateTo('admin');
   };
 
   const handleNavigateToLeaderboard = () => {
-    setCurrentScreen('leaderboard');
+    navigateTo('leaderboard');
   };
 
   const handleBackFromAdmin = () => {
-    setCurrentScreen('profile');
+    goBack();
   };
 
   // Show loading screen while checking auth state
@@ -150,20 +177,6 @@ const AuthNavigator: React.FC = () => {
             onNavigateToFriends={handleNavigateToFriends}
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
             onNavigateToCreatePost={handleNavigateToCreatePost}            onNavigateToAchievements={handleNavigateToAchievements}
-            onNavigateToProfile={handleNavigateToProfile}
-            onNavigateToLeaderboard={handleNavigateToLeaderboard}
-          />
-        );
-      case 'friends':
-        return (
-          <FriendsScreen
-            onStartChat={handleStartChat}
-            onBack={handleBackFromFriends}
-            onNavigateToHome={handleNavigateToHome}
-            onNavigateToFriends={handleNavigateToFriends}
-            onNavigateToPostsFeed={handleNavigateToPostsFeed}
-            onNavigateToCreatePost={handleNavigateToCreatePost}
-            onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
             onNavigateToLeaderboard={handleNavigateToLeaderboard}
           />
@@ -207,23 +220,6 @@ const AuthNavigator: React.FC = () => {
             onNavigateToAchievements={handleNavigateToAchievements}
             onNavigateToProfile={handleNavigateToProfile}
             onNavigateToLeaderboard={handleNavigateToLeaderboard}
-          />
-        );
-      case 'messages':
-        return messageParams ? (
-          <DirectMessagesScreen
-            conversationId={messageParams.conversationId}
-            otherUserId={messageParams.otherUserId}
-            onBack={handleBackFromMessages}
-          />
-        ) : (
-          <HomeScreen
-            user={user}
-            onNavigateToFriends={handleNavigateToFriends}
-            onNavigateToPostsFeed={handleNavigateToPostsFeed}
-            onNavigateToCreatePost={handleNavigateToCreatePost}
-            onNavigateToAchievements={handleNavigateToAchievements}
-            onNavigateToProfile={handleNavigateToProfile}
           />
         );
       case 'achievements':

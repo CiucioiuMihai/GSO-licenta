@@ -20,6 +20,7 @@ import {
   acceptFriendRequest, 
   rejectFriendRequest,
   sendFriendRequest,
+  removeFriend,
   getUserConversations,
   startBotConversation,
 } from '@/services/friendsService';
@@ -41,7 +42,7 @@ interface FriendsScreenProps {
   onNavigateToLeaderboard?: () => void;
 }
 
-type TabType = 'friends' | 'requests' | 'search';
+type TabType = 'messages' | 'friends' | 'requests' | 'search';
 
 interface FriendWithConversation extends User {
   lastMessage?: string;
@@ -61,10 +62,11 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
   onNavigateToProfile,
   onNavigateToLeaderboard,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('friends');
+  const [activeTab, setActiveTab] = useState<TabType>('messages');
   const [navbarTab, setNavbarTab] = useState('explore');
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [friendRequestUsers, setFriendRequestUsers] = useState<Record<string, User>>({});
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
@@ -98,6 +100,14 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
     });
   }, [friends, conversations, currentUser]);
 
+  const messageFriends = useMemo<FriendWithConversation[]>(() => {
+    return [...friendsWithConversations].sort((a, b) => {
+      const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [friendsWithConversations]);
+
   useEffect(() => {
     loadFriends();
     
@@ -125,6 +135,31 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
       unsubscribeConversations();
     };
   }, []);
+
+  useEffect(() => {
+    const loadFriendRequestUsers = async () => {
+      const uniqueUserIds = [...new Set(friendRequests.map(req => req.fromUserId))];
+      if (uniqueUserIds.length === 0) {
+        setFriendRequestUsers({});
+        return;
+      }
+
+      try {
+        const userDocs = await Promise.all(uniqueUserIds.map((userId) => getDoc(doc(db, 'users', userId))));
+        const userMap: Record<string, User> = {};
+        userDocs.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            userMap[docSnap.id] = { id: docSnap.id, ...docSnap.data() } as User;
+          }
+        });
+        setFriendRequestUsers(userMap);
+      } catch (error) {
+        console.error('Error loading friend request users:', error);
+      }
+    };
+
+    loadFriendRequestUsers();
+  }, [friendRequests]);
 
   const loadFriends = async () => {
     try {
@@ -296,7 +331,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
       setCurrentUserData(userData);
       Alert.alert('Success', 'You are now following this user!');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to follow user');
+      const message = error?.message || 'Failed to follow user';
+      Alert.alert('Error', message.includes('permissions') ? `${message}\nIf this persists, redeploy Firestore rules.` : message);
     }
   };
 
@@ -312,6 +348,34 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to unfollow user');
     }
+  };
+
+  const handleUnfriend = async (friendId: string) => {
+    const confirmUnfriend = async () => {
+      try {
+        await removeFriend(friendId);
+        await loadFriends();
+        if (currentUser) {
+          const userData = await getUserDataWithCounts(currentUser.uid);
+          setCurrentUserData(userData);
+        }
+        Alert.alert('Success', 'Friend removed');
+      } catch (error: any) {
+        Alert.alert('Error', error.message || 'Failed to remove friend');
+      }
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm('Remove this friend?')) {
+        await confirmUnfriend();
+      }
+      return;
+    }
+
+    Alert.alert('Remove friend', 'Do you want to remove this friend?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => { void confirmUnfriend(); } },
+    ]);
   };
 
   const isFollowing = (userId: string): boolean => {
@@ -409,6 +473,12 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
         </TouchableOpacity>
         <View style={styles.friendActions}>
           <TouchableOpacity
+            style={styles.unfriendButtonSmall}
+            onPress={() => handleUnfriend(item.id)}
+          >
+            <Text style={styles.unfriendButtonTextSmall}>−</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
             onPress={() => userIsFollowed ? handleUnfollowUser(item.id) : handleFollowUser(item.id)}
           >
@@ -432,35 +502,40 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
     );
   };
 
-  const renderFriendRequest = ({ item }: { item: FriendRequest }) => (
-    <View style={styles.requestItem}>
-      <View style={styles.friendInfo}>
-        <View style={styles.friendAvatar}>
-          <Text style={styles.friendAvatarText}>?</Text>
+  const renderFriendRequest = ({ item }: { item: FriendRequest }) => {
+    const sender = friendRequestUsers[item.fromUserId];
+    const senderName = sender?.displayName || 'Friend Request';
+
+    return (
+      <View style={styles.requestItem}>
+        <View style={styles.friendInfo}>
+          <View style={styles.friendAvatar}>
+            <Text style={styles.friendAvatarText}>{senderName.charAt(0).toUpperCase()}</Text>
+          </View>
+          <View style={styles.friendDetails}>
+            <Text style={styles.friendName}>{senderName}</Text>
+            <Text style={styles.friendStatus}>
+              {item.createdAt.toLocaleDateString()}
+            </Text>
+          </View>
         </View>
-        <View style={styles.friendDetails}>
-          <Text style={styles.friendName}>Friend Request</Text>
-          <Text style={styles.friendStatus}>
-            {item.createdAt.toLocaleDateString()}
-          </Text>
+        <View style={styles.requestButtons}>
+          <TouchableOpacity
+            style={styles.acceptButton}
+            onPress={() => handleAcceptRequest(item.id)}
+          >
+            <Text style={styles.acceptButtonText}>✓</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.rejectButton}
+            onPress={() => handleRejectRequest(item.id)}
+          >
+            <Text style={styles.rejectButtonText}>✕</Text>
+          </TouchableOpacity>
         </View>
       </View>
-      <View style={styles.requestButtons}>
-        <TouchableOpacity
-          style={styles.acceptButton}
-          onPress={() => handleAcceptRequest(item.id)}
-        >
-          <Text style={styles.acceptButtonText}>✓</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.rejectButton}
-          onPress={() => handleRejectRequest(item.id)}
-        >
-          <Text style={styles.rejectButtonText}>✕</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   const renderSearchResult = ({ item }: { item: User }) => {
     const userIsFollowed = isFollowing(item.id);
@@ -503,7 +578,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
   };
 
   const tabs = [
-    { id: 'friends' as TabType, label: 'Friends & Messages', count: friendsWithConversations.length },
+    { id: 'messages' as TabType, label: 'Messages', count: messageFriends.length },
+    { id: 'friends' as TabType, label: 'Friends', count: friends.length },
     { id: 'requests' as TabType, label: 'Requests', count: friendRequests.length },
     { id: 'search' as TabType, label: 'Search', count: 0 },
   ];
@@ -591,13 +667,14 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
 
           <FlatList
             data={
-              activeTab === 'friends' ? friendsWithConversations :
+              activeTab === 'messages' ? messageFriends :
+              activeTab === 'friends' ? friends :
               activeTab === 'requests' ? friendRequests :
               searchResults
             }
             keyExtractor={(item: any) => item.id}
             ListHeaderComponent={
-              activeTab === 'friends' ? (
+              activeTab === 'messages' ? (
                 <TouchableOpacity
                   style={styles.botChatButton}
                   onPress={handleStartBotChat}
@@ -613,7 +690,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
               ) : null
             }
             renderItem={(props: any) => {
-              if (activeTab === 'friends') {
+              if (activeTab === 'messages' || activeTab === 'friends') {
                 return renderFriend(props);
               } else if (activeTab === 'requests') {
                 return renderFriendRequest(props);
@@ -648,7 +725,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.2)',
   },
@@ -662,7 +739,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: '#fff',
     textAlign: 'center',
@@ -671,25 +748,27 @@ const styles = StyleSheet.create({
     width: 40,
   },
   tabs: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     backgroundColor: 'transparent',
   },
   tab: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 20,
-    paddingHorizontal: 16,
+    borderRadius: 16,
+    minWidth: 110,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    marginRight: 10,
+    marginRight: 8,
     borderWidth: 0,
   },
   activeTab: {
     backgroundColor: '#fff',
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: '#fff',
+    textAlign: 'center',
   },
   activeTabText: {
     color: '#667eea',

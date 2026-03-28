@@ -10,6 +10,7 @@ import {
   Platform,
   Dimensions,
   Image,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -282,7 +283,12 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoidingView}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
+        >
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Content Input */}
           <View style={styles.contentContainer}>
             <TextInput
@@ -381,6 +387,7 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
           {/* Trending Tags */}
           {renderTrendingTags()}
         </ScrollView>
+        </KeyboardAvoidingView>
         
         {/* Navbar */}
         <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={currentUserData} />
@@ -396,6 +403,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     paddingTop: Platform.OS === 'web' ? 70 : 0,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

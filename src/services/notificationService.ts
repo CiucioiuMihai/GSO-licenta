@@ -5,6 +5,12 @@ import Constants from 'expo-constants';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
+let activeConversationId: string | null = null;
+
+export const setActiveConversationForNotifications = (conversationId: string | null) => {
+  activeConversationId = conversationId;
+};
+
 // Configure notification behavior
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -278,6 +284,10 @@ export const listenForIncomingMessages = (userId: string) => {
         };
 
         if (!msg.fromUserId || !msg.message) continue;
+
+        if (msg.conversationId && activeConversationId && msg.conversationId === activeConversationId) {
+          continue;
+        }
 
         try {
           const senderDoc = await getDoc(doc(db, 'users', msg.fromUserId));

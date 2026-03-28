@@ -17,7 +17,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { auth } from '@/services/firebase';
+import { auth, db } from '@/services/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { updateUserProfile } from '@/services/firestore';
 import { getUserDataWithCounts, followUser, unfollowUser } from '@/services/postsService';
 import { getUserPosts } from '@/services/postsService';
@@ -70,6 +71,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [isFollowingUser, setIsFollowingUser] = useState(false);
   const [isFriendUser, setIsFriendUser] = useState(false);
   const [sendingFriendRequest, setSendingFriendRequest] = useState(false);
+  const [friendRequestSent, setFriendRequestSent] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [selectedReportReason, setSelectedReportReason] = useState('');
@@ -137,6 +139,15 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
         const currentUserDataWithCounts = await getUserDataWithCounts(currentUser.uid);
         setIsFollowingUser(currentUserDataWithCounts?.following?.includes(viewingUserId) || false);
         setIsFriendUser(currentUserDataWithCounts?.friends?.includes(viewingUserId) || false);
+
+        const pendingRequestQuery = query(
+          collection(db, 'friendRequests'),
+          where('fromUserId', '==', currentUser.uid),
+          where('toUserId', '==', viewingUserId),
+          where('status', '==', 'pending')
+        );
+        const pendingSnapshot = await getDocs(pendingRequestQuery);
+        setFriendRequestSent(!pendingSnapshot.empty);
       } catch (error) {
         console.error('Error loading relationship status:', error);
       }
@@ -171,6 +182,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     setSendingFriendRequest(true);
     try {
       await sendFriendRequest(viewingUserId);
+      setFriendRequestSent(true);
       Alert.alert('Success', 'Friend request sent');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to send friend request');
@@ -324,7 +336,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
       const FileSystem = await import('expo-file-system/legacy');
       const MediaLibrary = await import('expo-media-library');
 
-      const permission = await MediaLibrary.requestPermissionsAsync();
+      const permission = await MediaLibrary.requestPermissionsAsync(false, ['photo']);
       if (permission.status !== 'granted') {
         Alert.alert('Permission needed', 'Please allow media library access to save images.');
         return;
@@ -464,10 +476,10 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   <TouchableOpacity
                     style={[styles.relationshipButton, styles.friendActionButton]}
                     onPress={handleSendFriendRequest}
-                    disabled={sendingFriendRequest}
+                    disabled={sendingFriendRequest || friendRequestSent}
                   >
                     <Text style={styles.relationshipButtonText}>
-                      {sendingFriendRequest ? 'Sending...' : 'Add Friend'}
+                      {sendingFriendRequest ? 'Sending...' : friendRequestSent ? 'Request Sent' : 'Add Friend'}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -884,15 +896,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   followingBadge: {
-    backgroundColor: 'rgba(46, 204, 113, 0.2)',
-    borderColor: 'rgba(46, 204, 113, 0.45)',
+    backgroundColor: 'rgba(28, 107, 70, 0.88)',
+    borderColor: 'rgba(143, 243, 199, 0.9)',
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
   },
   followingBadgeText: {
-    color: '#B8F7D4',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
   },

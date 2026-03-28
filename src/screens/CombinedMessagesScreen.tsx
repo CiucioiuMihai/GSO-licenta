@@ -10,6 +10,8 @@ import {
   Dimensions,
   Platform,
   KeyboardAvoidingView,
+  ScrollView,
+  BackHandler,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +22,7 @@ import {
   acceptFriendRequest, 
   rejectFriendRequest,
   sendFriendRequest,
+  removeFriend,
   getUserConversations,
   sendDirectMessage, 
   getConversationMessages, 
@@ -29,6 +32,7 @@ import {
 import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
 import { offlineService } from '@/services/offlineService';
 import { BOT_USER_ID, BOT_USER, isBotMessage } from '@/services/chatbotService';
+import { setActiveConversationForNotifications } from '@/services/notificationService';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
 import Navbar from '@/components/Navbar';
@@ -64,6 +68,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   const [navbarTab, setNavbarTab] = useState('explore');
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [friendRequestUsers, setFriendRequestUsers] = useState<Record<string, User>>({});
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
@@ -114,9 +119,36 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    const loadFriendRequestUsers = async () => {
+      const uniqueUserIds = [...new Set(friendRequests.map(req => req.fromUserId))];
+      if (uniqueUserIds.length === 0) {
+        setFriendRequestUsers({});
+        return;
+      }
+
+      try {
+        const userDocs = await Promise.all(uniqueUserIds.map((userId) => getDoc(doc(db, 'users', userId))));
+        const userMap: Record<string, User> = {};
+        userDocs.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            userMap[docSnap.id] = { id: docSnap.id, ...docSnap.data() } as User;
+          }
+        });
+        setFriendRequestUsers(userMap);
+      } catch (error) {
+        console.error('Error loading friend request users:', error);
+      }
+    };
+
+    loadFriendRequestUsers();
+  }, [friendRequests]);
+
   // Chat message listener
   useEffect(() => {
     if (!selectedConversation) return;
+
+    setActiveConversationForNotifications(selectedConversation);
 
     const unsubscribe = getConversationMessages(selectedConversation, (newMessages) => {
       setMessages(newMessages);
@@ -126,7 +158,28 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     });
 
     markMessagesAsRead(selectedConversation).catch(console.error);
-    return unsubscribe;
+    return () => {
+      setActiveConversationForNotifications(null);
+      unsubscribe();
+    };
+  }, [selectedConversation]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || isWeb || isTablet) {
+      return;
+    }
+
+    const onHardwareBackPress = () => {
+      if (selectedConversation) {
+        setSelectedConversation(null);
+        setSelectedUserId(null);
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onHardwareBackPress);
+    return () => subscription.remove();
   }, [selectedConversation]);
 
   const loadFriends = async () => {
@@ -296,7 +349,8 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
       setCurrentUserData(userData);
       Alert.alert('Success', 'You are now following this user!');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to follow user');
+      const message = error?.message || 'Failed to follow user';
+      Alert.alert('Error', message.includes('permissions') ? `${message}\nIf this persists, redeploy Firestore rules.` : message);
     }
   };
 
@@ -314,12 +368,36 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     }
   };
 
-  const isFollowing = (userId: string): boolean => {
-    return currentUserData?.following?.includes(userId) || false;
+  const handleUnfriend = async (friendId: string) => {
+    const confirmUnfriend = async () => {
+      try {
+        await removeFriend(friendId);
+        await loadFriends();
+        if (currentUser) {
+          const userData = await getUserDataWithCounts(currentUser.uid);
+          setCurrentUserData(userData);
+        }
+        Alert.alert('Success', 'Friend removed');
+      } catch (error: any) {
+        Alert.alert('Error', error?.message || 'Failed to remove friend');
+      }
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm('Remove this friend?')) {
+        await confirmUnfriend();
+      }
+      return;
+    }
+
+    Alert.alert('Remove friend', 'Do you want to remove this friend?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => { void confirmUnfriend(); } },
+    ]);
   };
 
-  const isFriend = (userId: string): boolean => {
-    return currentUserData?.friends?.includes(userId) || false;
+  const isFollowing = (userId: string): boolean => {
+    return currentUserData?.following?.includes(userId) || false;
   };
 
   const isUserOnlineNow = (user?: Partial<User> | null): boolean => {
@@ -380,14 +458,18 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
         </View>
 
         {/* Tabs */}
-        <View style={styles.tabContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabContainer}>
           {['conversations', 'friends', 'requests', 'search'].map(tab => (
             <TouchableOpacity
               key={tab}
-              style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
+              style={[
+                styles.tabButton,
+                isWeb && styles.tabButtonWeb,
+                activeTab === tab && styles.activeTabButton,
+              ]}
               onPress={() => setActiveTab(tab as TabType)}
             >
-              <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+              <Text numberOfLines={1} style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
                 {tab === 'conversations' ? 'Chats' : 
                  tab === 'friends' ? 'Friends' :
                  tab === 'requests' ? `Requests${friendRequests.length > 0 ? ` (${friendRequests.length})` : ''}` :
@@ -395,7 +477,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         {/* Search Input */}
         {activeTab === 'search' && (
@@ -470,7 +552,6 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
             }
 
             if (activeTab === 'friends') {
-              const userIsFriend = isFriend(item.id);
               const userIsFollowed = isFollowing(item.id);
               
               return (
@@ -487,6 +568,12 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                     </View>
                   </TouchableOpacity>
                   <View style={styles.friendActions}>
+                    <TouchableOpacity
+                      style={styles.unfriendButtonSmall}
+                      onPress={() => handleUnfriend(item.id)}
+                    >
+                      <Text style={styles.unfriendButtonTextSmall}>−</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.followButtonSmall, userIsFollowed && styles.followingButtonSmall]}
                       onPress={() => userIsFollowed ? handleUnfollowUser(item.id) : handleFollowUser(item.id)}
@@ -517,10 +604,12 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
             }
 
             if (activeTab === 'requests') {
+              const sender = friendRequestUsers[item.fromUserId];
+              const senderName = sender?.displayName || 'Friend Request';
               return (
                 <View style={styles.requestItem}>
                   <View style={styles.listItemContent}>
-                    <Text style={styles.listItemTitle}>{item.displayName}</Text>
+                    <Text style={styles.listItemTitle}>{senderName}</Text>
                     <Text style={styles.listItemSubtitle}>Sent you a friend request</Text>
                   </View>
                   <View style={styles.requestButtons}>
@@ -586,7 +675,13 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
         
         {/* Navbar - Only show on mobile */}
         {!isWeb && !isTablet && (
-          <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={currentUserData} />
+          <Navbar
+            activeTab={navbarTab}
+            onTabPress={handleNavbarTabPress}
+            user={currentUserData}
+            mobileBottomOffset={0}
+            mobileBackgroundHeight={50}
+          />
         )}
       </LinearGradient>
     </View>
@@ -729,15 +824,17 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#667eea',
   },
   webLayout: {
     flex: 1,
     flexDirection: 'row',
   },
   sidebar: {
-    width: isWeb ? screenWidth * 0.35 : 300,
-    minWidth: 280,
-    maxWidth: 400,
+    flex: 1,
+    width: isWeb ? Math.max(screenWidth * 0.33, 320) : isTablet ? 300 : '100%',
+    minWidth: isWeb || isTablet ? 280 : 0,
+    maxWidth: isWeb || isTablet ? 400 : '100%',
     borderRightWidth: 1,
     borderRightColor: 'rgba(0,0,0,0.1)',
   },
@@ -767,24 +864,27 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   tabContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
   },
   tabButton: {
-    flex: 1,
+    minWidth: 82,
     paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginHorizontal: 2,
+    paddingHorizontal: 10,
+    marginHorizontal: 4,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  tabButtonWeb: {
+    minWidth: 74,
+    paddingHorizontal: 8,
   },
   activeTabButton: {
     backgroundColor: 'rgba(255,255,255,0.9)',
   },
   tabText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -1107,6 +1207,20 @@ const styles = StyleSheet.create({
   },
   followingButtonSmall: {
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  unfriendButtonSmall: {
+    backgroundColor: 'rgba(220, 38, 38, 0.9)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unfriendButtonTextSmall: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 18,
   },
   friendActions: {
     flexDirection: 'row',

@@ -13,9 +13,17 @@ interface NavbarProps {
   activeTab: string;
   onTabPress: (tab: string) => void;
   user: User | null;
+  mobileBottomOffset?: number;
+  mobileBackgroundHeight?: number;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
+const Navbar: React.FC<NavbarProps> = ({
+  activeTab,
+  onTabPress,
+  user,
+  mobileBottomOffset = 50,
+  mobileBackgroundHeight = 100,
+}) => {
   const navItems = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'explore', label: 'Messages', icon: '💬' },
@@ -35,9 +43,15 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabPress, user }) => {
   return (
     <>
       {/* Black background below navbar for mobile */}
-      {!isWeb && <View style={styles.navbarBackground} />}
+      {!isWeb && <View style={[styles.navbarBackground, { height: mobileBackgroundHeight }]} />}
       
-      <View style={[styles.navbar, isWeb ? styles.navbarWeb : styles.navbarMobile]}>
+      <View
+        style={[
+          styles.navbar,
+          isWeb ? styles.navbarWeb : styles.navbarMobile,
+          !isWeb && { bottom: mobileBottomOffset },
+        ]}
+      >
         {/* Web: Show app info on left, nav in center, user info on right */}
         {isWeb && (
         <View style={styles.webLeft}>

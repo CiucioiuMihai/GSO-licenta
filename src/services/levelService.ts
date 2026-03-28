@@ -83,6 +83,21 @@ const createQuestForDay = (userId: string, date: Date): DailyQuest => {
   };
 };
 
+const toFirestoreQuest = (quest: DailyQuest): Record<string, any> => {
+  const base = {
+    id: quest.id,
+    action: quest.action,
+    title: quest.title,
+    description: quest.description,
+    target: quest.target,
+    progress: quest.progress,
+    completed: quest.completed,
+    assignedAt: quest.assignedAt,
+  };
+
+  return quest.completedAt ? { ...base, completedAt: quest.completedAt } : base;
+};
+
 /**
  * Award XP to a user for a specific action
  * @param userId - The user ID
@@ -359,7 +374,7 @@ export const ensureDailyQuestForToday = async (userId: string): Promise<DailyQue
 
     const newQuest = createQuestForDay(userId, today);
     transaction.update(userRef, {
-      activeDailyQuest: newQuest,
+      activeDailyQuest: toFirestoreQuest(newQuest),
       dailyQuestAssignedDate: new Date(),
       dailyQuestCompletedDate: null,
     });
@@ -395,7 +410,7 @@ export const trackDailyQuestProgress = async (
 
     if (!storedQuest || !isSameCalendarDay(assignedDate, today)) {
       transaction.update(userRef, {
-        activeDailyQuest: questForToday,
+        activeDailyQuest: toFirestoreQuest(questForToday),
         dailyQuestAssignedDate: new Date(),
         dailyQuestCompletedDate: null,
       });
@@ -411,15 +426,21 @@ export const trackDailyQuestProgress = async (
 
     const nextProgress = Math.min(questForToday.target, (questForToday.progress || 0) + 1);
     const completed = nextProgress >= questForToday.target;
-    const updatedQuest: DailyQuest = {
-      ...questForToday,
-      progress: nextProgress,
-      completed,
-      completedAt: completed ? new Date() : questForToday.completedAt,
-    };
+    const updatedQuest: DailyQuest = completed
+      ? {
+          ...questForToday,
+          progress: nextProgress,
+          completed: true,
+          completedAt: new Date(),
+        }
+      : {
+          ...questForToday,
+          progress: nextProgress,
+          completed: false,
+        };
 
     transaction.update(userRef, {
-      activeDailyQuest: updatedQuest,
+      activeDailyQuest: toFirestoreQuest(updatedQuest),
       ...(completed ? { dailyQuestCompletedDate: new Date() } : {}),
     });
 

@@ -40,6 +40,8 @@ import {
 import { createReport } from '@/services/reportService';
 import { auth } from '@/services/firebase';
 import Navbar from '@/components/Navbar';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/services/firebase';
 
 interface PostsFeedScreenProps {
   onCreatePost: () => void;
@@ -99,7 +101,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [repliesWithUsers, setRepliesWithUsers] = useState<{ [commentId: string]: (Reply & { user: User })[] }>({});
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [reportingPost, setReportingPost] = useState<(Post & { user: User }) | null>(null);
-  const [reportReason, setReportReason] = useState('');
+  const [selectedReportCategory, setSelectedReportCategory] = useState('');
+  const [customReportReason, setCustomReportReason] = useState('');
   const currentUser = auth.currentUser;
 
   const capHeadPosts = useCallback(<T extends { id: string }>(items: T[]): T[] => {
@@ -378,6 +381,20 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     
     try {
       await likePost(postId);
+
+      // Sync from server to avoid stale counters until manual refresh.
+      const postDoc = await getDoc(doc(db, 'posts', postId));
+      if (postDoc.exists()) {
+        const serverPost = { id: postDoc.id, ...postDoc.data() } as Post;
+        const normalizedServerPost: Post = {
+          ...serverPost,
+          createdAt: (postDoc.data().createdAt as any)?.toDate?.() || serverPost.createdAt,
+          updatedAt: (postDoc.data().updatedAt as any)?.toDate?.() || serverPost.updatedAt,
+        };
+
+        setPosts(prev => prev.map(post => (post.id === postId ? { ...post, ...normalizedServerPost } : post)));
+        setPostsWithUsers(prev => prev.map(post => (post.id === postId ? { ...post, ...normalizedServerPost } : post)));
+      }
     } catch (error: any) {
       // Revert to previous state on error
       setPosts(previousPosts);
@@ -544,7 +561,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       const FileSystem = await import('expo-file-system/legacy');
       const MediaLibrary = await import('expo-media-library');
 
-      const permission = await MediaLibrary.requestPermissionsAsync();
+      const permission = await MediaLibrary.requestPermissionsAsync(false, ['photo']);
       if (permission.status !== 'granted') {
         Alert.alert('Permission needed', 'Please allow media library access to save images.');
         return;
@@ -721,7 +738,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   };
 
   const handleReport = async () => {
-    if (!reportingPost || !reportReason.trim()) {
+    const finalReason = customReportReason.trim() || selectedReportCategory.trim();
+
+    if (!reportingPost || !finalReason) {
       Alert.alert('Error', 'Please provide a reason for the report');
       return;
     }
@@ -732,7 +751,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       await createReport(
         'post',
         reportingPost.id,
-        reportReason,
+        finalReason,
         {
           postContent: reportingPost.content,
           userId: reportingPost.userId,
@@ -743,7 +762,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       Alert.alert('Success', 'Report submitted successfully. Our team will review it.');
       setReportModalVisible(false);
       setReportingPost(null);
-      setReportReason('');
+      setSelectedReportCategory('');
+      setCustomReportReason('');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to submit report');
     }
@@ -895,6 +915,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             style={styles.actionButton}
             onPress={() => {
               setReportingPost(item);
+              setSelectedReportCategory('');
+              setCustomReportReason('');
               setReportModalVisible(true);
             }}
           >
@@ -1286,6 +1308,10 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         >
           <View style={styles.reportModalContainer}>
             <LinearGradient colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.9)']} style={styles.reportModalGradient}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 24}
+              >
               <View style={styles.reportModalContent}>
                 <View style={styles.reportModalHeader}>
                   <Text style={styles.reportModalTitle}>Report Post</Text>
@@ -1294,7 +1320,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
                     onPress={() => {
                       setReportModalVisible(false);
                       setReportingPost(null);
-                      setReportReason('');
+                      setSelectedReportCategory('');
+                      setCustomReportReason('');
                     }}
                   >
                     <Text style={styles.closeReportButtonText}>✕</Text>
@@ -1306,19 +1333,22 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
                 </Text>
 
                 {/* Predefined reasons */}
-                <ScrollView style={styles.reasonsList}>
+                <ScrollView style={styles.reasonsList} keyboardShouldPersistTaps="handled">
                   {['Spam', 'Inappropriate content', 'Harassment', 'Misinformation', 'Violence', 'Hate speech', 'Other'].map((reason) => (
                     <TouchableOpacity
                       key={reason}
                       style={[
                         styles.reasonButton,
-                        reportReason === reason && styles.reasonButtonSelected
+                        selectedReportCategory === reason && styles.reasonButtonSelected
                       ]}
-                      onPress={() => setReportReason(reason)}
+                      onPress={() => {
+                        setSelectedReportCategory(prev => (prev === reason ? '' : reason));
+                        setCustomReportReason('');
+                      }}
                     >
                       <Text style={[
                         styles.reasonText,
-                        reportReason === reason && styles.reasonTextSelected
+                        selectedReportCategory === reason && styles.reasonTextSelected
                       ]}>
                         {reason}
                       </Text>
@@ -1333,8 +1363,13 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
                     style={styles.customReasonInput}
                     placeholder="Describe the issue..."
                     placeholderTextColor="#888"
-                    value={reportReason}
-                    onChangeText={setReportReason}
+                    value={customReportReason}
+                    onChangeText={(text) => {
+                      setCustomReportReason(text);
+                      if (text.trim().length > 0) {
+                        setSelectedReportCategory('');
+                      }
+                    }}
                     multiline
                     numberOfLines={3}
                   />
@@ -1342,13 +1377,14 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
 
                 {/* Submit button */}
                 <TouchableOpacity
-                  style={[styles.submitReportButton, !reportReason.trim() && styles.submitReportButtonDisabled]}
+                  style={[styles.submitReportButton, !(customReportReason.trim() || selectedReportCategory.trim()) && styles.submitReportButtonDisabled]}
                   onPress={handleReport}
-                  disabled={!reportReason.trim()}
+                  disabled={!(customReportReason.trim() || selectedReportCategory.trim())}
                 >
                   <Text style={styles.submitReportButtonText}>Submit Report</Text>
                 </TouchableOpacity>
               </View>
+              </KeyboardAvoidingView>
             </LinearGradient>
           </View>
         </Modal>
@@ -1885,16 +1921,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   followingBadge: {
-    backgroundColor: 'rgba(46, 204, 113, 0.22)',
+    backgroundColor: 'rgba(28, 107, 70, 0.88)',
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 10,
     marginLeft: 6,
     borderWidth: 1,
-    borderColor: 'rgba(46, 204, 113, 0.45)',
+    borderColor: 'rgba(143, 243, 199, 0.9)',
   },
   followingBadgeText: {
-    color: '#B8F7D4',
+    color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '600',
   },

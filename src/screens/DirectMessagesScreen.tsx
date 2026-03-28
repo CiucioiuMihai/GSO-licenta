@@ -24,6 +24,7 @@ import {
 import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
 import { offlineService } from '@/services/offlineService';
 import { BOT_USER_ID, BOT_USER, isBotMessage } from '@/services/chatbotService';
+import { setActiveConversationForNotifications } from '@/services/notificationService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
 
@@ -47,6 +48,8 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
   const currentUser = auth.currentUser;
 
   useEffect(() => {
+    setActiveConversationForNotifications(conversationId);
+
     // Get other user's info
     const fetchOtherUser = async () => {
       try {
@@ -80,7 +83,10 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
     // Mark messages as read when screen opens
     markMessagesAsRead(conversationId).catch(console.error);
 
-    return unsubscribe;
+    return () => {
+      setActiveConversationForNotifications(null);
+      unsubscribe();
+    };
   }, [conversationId, otherUserId]);
 
   useEffect(() => {
@@ -104,7 +110,8 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
       setCurrentUserData(userData);
       Alert.alert('Success', 'You are now following this user!');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to follow user');
+      const message = error?.message || 'Failed to follow user';
+      Alert.alert('Error', message.includes('permissions') ? `${message}\nIf this persists, redeploy Firestore rules.` : message);
     }
   };
 
@@ -255,7 +262,7 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
                 )}
               </View>
             </View>
-            {!isFriend() && otherUser && (
+            {!isFriend() && otherUser && otherUserId !== BOT_USER_ID && (
               <TouchableOpacity
                 style={[styles.followButton, isFollowing() && styles.followingButton]}
                 onPress={isFollowing() ? handleUnfollowUser : handleFollowUser}

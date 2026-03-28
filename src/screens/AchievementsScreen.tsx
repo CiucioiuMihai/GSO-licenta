@@ -27,6 +27,7 @@ import {
   getLevelDefinition
 } from '@/utils/gamification';
 import { getUserDataWithCounts } from '@/services/postsService';
+import { checkAndUnlockAchievements } from '@/services/levelService';
 import { db } from '@/services/firebase';
 import { doc } from 'firebase/firestore';
 import Navbar from '@/components/Navbar';
@@ -69,7 +70,16 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
     const loadUserData = async () => {
       if (user?.uid) {
         try {
-          const userDataWithCounts = await getUserDataWithCounts(user.uid);
+          let userDataWithCounts = await getUserDataWithCounts(user.uid);
+
+          // Unlock achievements that are now eligible based on current counters.
+          if (userDataWithCounts) {
+            const newlyUnlocked = await checkAndUnlockAchievements(user.uid, userDataWithCounts);
+            if (newlyUnlocked.length > 0) {
+              userDataWithCounts = await getUserDataWithCounts(user.uid);
+            }
+          }
+
           console.log('AchievementsScreen - User data loaded:', {
             xp: userDataWithCounts?.xp,
             level: userDataWithCounts?.level,
@@ -113,8 +123,9 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
   const levelProgress = getLevelProgress(userData.xp || 0);
   const currentLevelDef = getLevelDefinition(levelProgress.currentLevel);
   
-  // Get user's achievement IDs
-  const userAchievementIds = userData.achievements?.map((a: any) => a.id) || [];
+  // Get user's unique achievement IDs
+  const userAchievementIdSet = new Set((userData.achievements || []).map((a: any) => a.id));
+  const userAchievementIds = Array.from(userAchievementIdSet);
 
   // Calculate achievement progress for each achievement
   const getAchievementProgress = (achievement: AchievementDefinition): AchievementProgress => {
@@ -306,9 +317,7 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
   ];
 
   const sortedAchievements = getSortedAchievements();
-  const completedCount = sortedAchievements.filter(ach => 
-    userAchievementIds.includes(ach.id)
-  ).length;
+  const completedCount = ACHIEVEMENT_DEFINITIONS.filter(ach => userAchievementIdSet.has(ach.id)).length;
 
   return (
     <View style={styles.container}>
