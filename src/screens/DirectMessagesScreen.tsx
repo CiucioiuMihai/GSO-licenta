@@ -126,6 +126,24 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
     return currentUserData?.following?.includes(otherUserId) || false;
   };
 
+  const isUserOnlineNow = (user?: Partial<User> | null): boolean => {
+    if (!user?.isOnline) return false;
+
+    const rawLastActive = (user as any).lastActive;
+    let lastActive: Date | null = null;
+
+    if (rawLastActive instanceof Date) {
+      lastActive = rawLastActive;
+    } else if (rawLastActive?.toDate) {
+      lastActive = rawLastActive.toDate();
+    } else if (rawLastActive) {
+      lastActive = new Date(rawLastActive);
+    }
+
+    if (!lastActive) return false;
+    return Date.now() - lastActive.getTime() <= 2 * 60 * 1000;
+  };
+
   const isFriend = (): boolean => {
     return currentUserData?.friends?.includes(otherUserId) || false;
   };
@@ -228,7 +246,7 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
               </Text>
               <View style={styles.headerBadges}>
                 <Text style={styles.headerSubtitle}>
-                  {otherUser?.isOnline ? '🟢 Online' : '⚪ Offline'}
+                  {isUserOnlineNow(otherUser) ? '🟢 Online' : '⚪ Offline'}
                 </Text>
                 {isFriend() && (
                   <View style={styles.friendBadge}>

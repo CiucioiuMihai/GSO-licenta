@@ -20,6 +20,10 @@ export interface User {
   totalFriends?: number;
   dailyStreak?: number;
   lastLoginDate?: Date;
+  lastDailyQuestDate?: Date;
+  dailyQuestAssignedDate?: Date;
+  dailyQuestCompletedDate?: Date;
+  activeDailyQuest?: DailyQuest;
   totalDaysActive?: number;
   isOnline: boolean;
   createdAt: Date;
@@ -121,6 +125,20 @@ export interface Badge {
   awardedAt: Date;
 }
 
+export type DailyQuestAction = 'create_post' | 'add_comment' | 'like_post';
+
+export interface DailyQuest {
+  id: string;
+  action: DailyQuestAction;
+  title: string;
+  description: string;
+  target: number;
+  progress: number;
+  completed: boolean;
+  assignedAt: Date;
+  completedAt?: Date;
+}
+
 // Level System Definitions
 export interface LevelDefinition {
   level: number;
@@ -155,7 +173,7 @@ export interface BadgeDefinition {
 
 // XP Sources
 export interface XPSource {
-  action: 'create_post' | 'receive_like_post' | 'receive_comment' | 'receive_like_comment' | 'add_friend' | 'daily_login';
+  action: 'create_post' | 'receive_like_post' | 'receive_comment' | 'receive_like_comment' | 'add_friend' | 'daily_login' | 'daily_quest';
   xpAmount: number;
 }
 
@@ -399,6 +417,7 @@ export const XP_REWARDS: Record<XPSource['action'], number> = {
   receive_like_comment: 1,
   add_friend: 20,
   daily_login: 5,
+  daily_quest: 15,
 };
 
 export interface Report {

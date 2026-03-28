@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { batchApplyRetroactiveXP } from './levelService';
-import { Tag } from '@/types';
+import { Tag, User } from '@/types';
 
 // Admin stats interface
 interface AdminStats {
@@ -416,6 +416,85 @@ export const adminGetAllTags = async (): Promise<Tag[]> => {
     }));
   } catch (error) {
     console.error('Error fetching tags for admin:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetch all users for admin management.
+ */
+export const adminGetAllUsers = async (): Promise<User[]> => {
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+
+    return snapshot.docs
+      .map(d => ({
+        id: d.id,
+        ...(d.data() as Omit<User, 'id'>),
+        createdAt: (d.data().createdAt as Timestamp)?.toDate?.() ?? new Date(),
+        lastActive: (d.data().lastActive as Timestamp)?.toDate?.() ?? new Date(),
+      }))
+      .sort((a, b) => (b.xp || 0) - (a.xp || 0));
+  } catch (error) {
+    console.error('Error fetching users for admin:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a user and their own authored content.
+ */
+export const adminDeleteUser = async (userId: string, moderatorId: string): Promise<void> => {
+  try {
+    if (userId === moderatorId) {
+      throw new Error('You cannot delete your own account');
+    }
+
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) throw new Error('User not found');
+
+    const userData = userSnap.data() as Partial<User>;
+    if (userData.role === 'admin') {
+      throw new Error('Cannot delete another admin account from this screen');
+    }
+
+    const postsSnapshot = await getDocs(query(collection(db, 'posts'), where('userId', '==', userId)));
+    const commentsSnapshot = await getDocs(query(collection(db, 'comments'), where('userId', '==', userId)));
+    const repliesSnapshot = await getDocs(query(collection(db, 'replies'), where('userId', '==', userId)));
+    const requestsFromSnapshot = await getDocs(query(collection(db, 'friendRequests'), where('fromUserId', '==', userId)));
+    const requestsToSnapshot = await getDocs(query(collection(db, 'friendRequests'), where('toUserId', '==', userId)));
+
+    const refsToDelete = [
+      userRef,
+      ...postsSnapshot.docs.map(d => d.ref),
+      ...commentsSnapshot.docs.map(d => d.ref),
+      ...repliesSnapshot.docs.map(d => d.ref),
+      ...requestsFromSnapshot.docs.map(d => d.ref),
+      ...requestsToSnapshot.docs.map(d => d.ref),
+    ];
+
+    // Firestore batch limit is 500 operations
+    for (let i = 0; i < refsToDelete.length; i += 450) {
+      const batch = writeBatch(db);
+      refsToDelete.slice(i, i + 450).forEach(ref => batch.delete(ref));
+      await batch.commit();
+    }
+
+    await addDoc(collection(db, 'moderationLogs'), {
+      contentId: userId,
+      contentType: 'user',
+      action: 'admin_deleted',
+      moderatorId,
+      timestamp: serverTimestamp(),
+      details: {
+        deletedPosts: postsSnapshot.size,
+        deletedComments: commentsSnapshot.size,
+        deletedReplies: repliesSnapshot.size,
+      },
+    });
+  } catch (error) {
+    console.error('Error deleting user as admin:', error);
     throw error;
   }
 };

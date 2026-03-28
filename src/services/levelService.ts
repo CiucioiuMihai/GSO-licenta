@@ -1,11 +1,13 @@
-import { doc, updateDoc, increment, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, increment, arrayUnion, runTransaction } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { 
   User, 
   XPSource, 
   XP_REWARDS, 
   Achievement,
-  ACHIEVEMENT_DEFINITIONS 
+  ACHIEVEMENT_DEFINITIONS,
+  DailyQuest,
+  DailyQuestAction,
 } from '../types';
 import { 
   calculateLevel, 
@@ -13,6 +15,73 @@ import {
   checkAchievementsForUser,
   getLevelDefinition
 } from '../utils/gamification';
+
+const DAILY_QUEST_POOL: Omit<DailyQuest, 'progress' | 'completed' | 'assignedAt' | 'completedAt'>[] = [
+  {
+    id: 'quest_create_post_1',
+    action: 'create_post',
+    title: 'Creator Sprint',
+    description: 'Create 1 post today.',
+    target: 1,
+  },
+  {
+    id: 'quest_add_comment_2',
+    action: 'add_comment',
+    title: 'Conversation Starter',
+    description: 'Add 2 comments today.',
+    target: 2,
+  },
+  {
+    id: 'quest_like_post_3',
+    action: 'like_post',
+    title: 'Support Squad',
+    description: 'Like 3 posts today.',
+    target: 3,
+  },
+];
+
+const parseDateValue = (value: any): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === 'object' && 'toDate' in value) {
+    return value.toDate();
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isSameCalendarDay = (dateA: Date | null, dateB: Date): boolean => {
+  if (!dateA) {
+    return false;
+  }
+
+  const normalizedA = new Date(dateA);
+  normalizedA.setHours(0, 0, 0, 0);
+  const normalizedB = new Date(dateB);
+  normalizedB.setHours(0, 0, 0, 0);
+  return normalizedA.toDateString() === normalizedB.toDateString();
+};
+
+const createQuestForDay = (userId: string, date: Date): DailyQuest => {
+  const daySeed = Math.floor(date.getTime() / (1000 * 60 * 60 * 24));
+  const userSeed = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const questIndex = Math.abs(daySeed + userSeed) % DAILY_QUEST_POOL.length;
+  const template = DAILY_QUEST_POOL[questIndex];
+
+  return {
+    ...template,
+    progress: 0,
+    completed: false,
+    assignedAt: new Date(),
+  };
+};
 
 /**
  * Award XP to a user for a specific action
@@ -265,6 +334,172 @@ export const handleDailyLogin = async (userId: string, user: User) => {
   const newAchievements = await checkAndUnlockAchievements(userId, updatedUser);
   
   return { ...result, newAchievements };
+};
+
+/**
+ * Ensure a user has today's quest assigned.
+ */
+export const ensureDailyQuestForToday = async (userId: string): Promise<DailyQuest> => {
+  const userRef = doc(db, 'users', userId);
+  const today = new Date();
+
+  const result = await runTransaction(db, async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    if (!userDoc.exists()) {
+      throw new Error('User not found');
+    }
+
+    const userData = userDoc.data() as User;
+    const assignedDate = parseDateValue((userData as any).dailyQuestAssignedDate);
+    const activeQuest = (userData as any).activeDailyQuest as DailyQuest | undefined;
+
+    if (activeQuest && isSameCalendarDay(assignedDate, today)) {
+      return activeQuest;
+    }
+
+    const newQuest = createQuestForDay(userId, today);
+    transaction.update(userRef, {
+      activeDailyQuest: newQuest,
+      dailyQuestAssignedDate: new Date(),
+      dailyQuestCompletedDate: null,
+    });
+
+    return newQuest;
+  });
+
+  return result;
+};
+
+/**
+ * Track daily quest progress for supported in-app actions.
+ */
+export const trackDailyQuestProgress = async (
+  userId: string,
+  action: DailyQuestAction
+): Promise<{ updated: boolean; completed: boolean; quest: DailyQuest }> => {
+  const userRef = doc(db, 'users', userId);
+  const today = new Date();
+
+  const result = await runTransaction(db, async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    if (!userDoc.exists()) {
+      throw new Error('User not found');
+    }
+
+    const userData = userDoc.data() as User;
+    const assignedDate = parseDateValue((userData as any).dailyQuestAssignedDate);
+    const storedQuest = (userData as any).activeDailyQuest as DailyQuest | undefined;
+    const questForToday = storedQuest && isSameCalendarDay(assignedDate, today)
+      ? storedQuest
+      : createQuestForDay(userId, today);
+
+    if (!storedQuest || !isSameCalendarDay(assignedDate, today)) {
+      transaction.update(userRef, {
+        activeDailyQuest: questForToday,
+        dailyQuestAssignedDate: new Date(),
+        dailyQuestCompletedDate: null,
+      });
+    }
+
+    if (questForToday.action !== action) {
+      return { updated: false, completed: questForToday.completed, quest: questForToday };
+    }
+
+    if (questForToday.completed) {
+      return { updated: false, completed: true, quest: questForToday };
+    }
+
+    const nextProgress = Math.min(questForToday.target, (questForToday.progress || 0) + 1);
+    const completed = nextProgress >= questForToday.target;
+    const updatedQuest: DailyQuest = {
+      ...questForToday,
+      progress: nextProgress,
+      completed,
+      completedAt: completed ? new Date() : questForToday.completedAt,
+    };
+
+    transaction.update(userRef, {
+      activeDailyQuest: updatedQuest,
+      ...(completed ? { dailyQuestCompletedDate: new Date() } : {}),
+    });
+
+    return { updated: true, completed, quest: updatedQuest };
+  });
+
+  return result;
+};
+
+/**
+ * Claim daily quest XP (once per day)
+ */
+export const claimDailyQuestXP = async (
+  userId: string
+): Promise<{ xpAwarded: number; leveledUp: boolean; newLevel?: number; alreadyClaimed: boolean; notCompleted: boolean }> => {
+  const userRef = doc(db, 'users', userId);
+  const today = new Date();
+  const xpAmount = XP_REWARDS.daily_quest;
+
+  try {
+    const transactionResult = await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+
+      const userData = userDoc.data() as User;
+      const currentXP = userData.xp || 0;
+      const oldLevel = calculateLevel(currentXP);
+
+      const lastDailyQuestDate = parseDateValue((userData as any).lastDailyQuestDate);
+      const assignedDate = parseDateValue((userData as any).dailyQuestAssignedDate);
+      const activeQuest = (userData as any).activeDailyQuest as DailyQuest | undefined;
+
+      if (isSameCalendarDay(lastDailyQuestDate, today)) {
+        return {
+          xpAwarded: 0,
+          leveledUp: false,
+          alreadyClaimed: true as const,
+          notCompleted: false as const,
+          newLevel: undefined,
+        };
+      }
+
+      const questIsToday = !!activeQuest && isSameCalendarDay(assignedDate, today);
+      if (!questIsToday || !activeQuest?.completed) {
+        return {
+          xpAwarded: 0,
+          leveledUp: false,
+          alreadyClaimed: false as const,
+          notCompleted: true as const,
+          newLevel: undefined,
+        };
+      }
+
+      const newXP = currentXP + xpAmount;
+      const newLevel = calculateLevel(newXP);
+      const leveledUp = newLevel > oldLevel;
+
+      transaction.update(userRef, {
+        xp: newXP,
+        level: newLevel,
+        lastDailyQuestDate: new Date(),
+      });
+
+      return {
+        xpAwarded: xpAmount,
+        leveledUp,
+        alreadyClaimed: false as const,
+        notCompleted: false as const,
+        newLevel: leveledUp ? newLevel : undefined,
+      };
+    });
+
+    return transactionResult;
+  } catch (error) {
+    console.error('Error claiming daily quest XP:', error);
+    throw error;
+  }
 };
 
 /**
@@ -558,12 +793,13 @@ export const syncUserXP = async (userId: string, user: User): Promise<{
       total: calculatedXP
     });
     
-    // If calculated XP differs significantly from current XP, update it
-    const xpDifference = Math.abs(calculatedXP - previousXP);
-    const shouldUpdate = xpDifference > 0 && calculatedXP !== previousXP;
+    // Never reduce XP during sync because bonus XP (quests, achievements, events)
+    // may not be derivable from aggregate counters.
+    const syncedXP = Math.max(previousXP, calculatedXP);
+    const shouldUpdate = syncedXP > previousXP;
     
     if (shouldUpdate) {
-      const newXP = calculatedXP;
+      const newXP = syncedXP;
       const newLevel = calculateLevel(newXP);
       const leveledUp = newLevel > previousLevel;
       
@@ -571,6 +807,7 @@ export const syncUserXP = async (userId: string, user: User): Promise<{
         previousXP,
         newXP,
         difference: newXP - previousXP,
+        calculatedXP,
         previousLevel,
         newLevel,
         leveledUp
@@ -596,7 +833,23 @@ export const syncUserXP = async (userId: string, user: User): Promise<{
       };
     }
     
-    console.log('syncUserXP - XP already in sync, no update needed');
+    console.log('syncUserXP - XP already in sync or includes bonus XP, no reduction applied');
+
+    // Keep level aligned with current XP even when no XP write is needed.
+    const levelFromCurrentXP = calculateLevel(previousXP);
+    if (levelFromCurrentXP !== previousLevel) {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, { level: levelFromCurrentXP });
+      return {
+        xpUpdated: false,
+        previousXP,
+        newXP: previousXP,
+        previousLevel,
+        newLevel: levelFromCurrentXP,
+        leveledUp: levelFromCurrentXP > previousLevel
+      };
+    }
+
     return {
       xpUpdated: false,
       previousXP,

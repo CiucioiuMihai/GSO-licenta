@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '@/services/firebase';
 import { getAllReports, updateReportStatus } from '@/services/reportService';
-import { adminDeletePost, adminDeleteTag, adminGetAllTags } from '@/services/adminFunctions';
+import { adminDeletePost, adminDeleteTag, adminGetAllTags, adminGetAllUsers, adminDeleteUser } from '@/services/adminFunctions';
 import { Report, User, Tag } from '@/types';
 import { getUserDataWithCounts } from '@/services/postsService';
 import Navbar from '@/components/Navbar';
@@ -35,7 +35,7 @@ interface AdminScreenProps {
 }
 
 type FilterStatus = 'all' | 'pending' | 'reviewed' | 'resolved' | 'dismissed';
-type ActiveView = 'reports' | 'tags';
+type ActiveView = 'reports' | 'tags' | 'users';
 
 const AdminScreen: React.FC<AdminScreenProps> = ({
   onBack,
@@ -61,6 +61,8 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
   const [activeView, setActiveView] = useState<ActiveView>('reports');
   const [tags, setTags] = useState<Tag[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const currentUser = auth.currentUser;
 
   useEffect(() => {
@@ -264,6 +266,44 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
     }
   };
 
+  const fetchUsers = useCallback(async () => {
+    setUsersLoading(true);
+    try {
+      const allUsers = await adminGetAllUsers();
+      setUsers(allUsers);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to fetch users');
+    } finally {
+      setUsersLoading(false);
+    }
+  }, []);
+
+  const handleDeleteManagedUser = async (targetUser: User) => {
+    if (!currentUser) return;
+
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(`Delete user "${targetUser.displayName}" and their content? This cannot be undone.`)
+      : await new Promise<boolean>(resolve =>
+          Alert.alert(
+            'Delete User',
+            `Delete user "${targetUser.displayName}" and their content? This cannot be undone.`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          )
+        );
+
+    if (!confirmed) return;
+
+    try {
+      await adminDeleteUser(targetUser.id, currentUser.uid);
+      setUsers(prev => prev.filter(u => u.id !== targetUser.id));
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to delete user');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
@@ -381,6 +421,15 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
           >
             <Text style={[styles.viewSwitcherText, activeView === 'tags' && styles.viewSwitcherTextActive]}>Tags</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewSwitcherButton, activeView === 'users' && styles.viewSwitcherButtonActive]}
+            onPress={() => {
+              setActiveView('users');
+              if (users.length === 0) fetchUsers();
+            }}
+          >
+            <Text style={[styles.viewSwitcherText, activeView === 'users' && styles.viewSwitcherTextActive]}>Users</Text>
+          </TouchableOpacity>
         </View>
 
         {activeView === 'reports' ? (
@@ -421,7 +470,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
           }
         />
           </>
-        ) : (
+        ) : activeView === 'tags' ? (
           /* Tags View */
           <View style={{ flex: 1 }}>
             <View style={styles.tagsHeader}>
@@ -454,6 +503,51 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
                 ListEmptyComponent={
                   <View style={styles.emptyContainer}>
                     <Text style={styles.emptyText}>No tags found</Text>
+                  </View>
+                }
+              />
+            )}
+          </View>
+        ) : (
+          <View style={{ flex: 1 }}>
+            <View style={styles.tagsHeader}>
+              <Text style={styles.tagsHeaderTitle}>All Users ({users.length})</Text>
+              <TouchableOpacity onPress={fetchUsers} style={styles.refreshButton}>
+                <Text style={styles.refreshButtonText}>↻</Text>
+              </TouchableOpacity>
+            </View>
+            {usersLoading ? (
+              <ActivityIndicator color="#fff" style={{ marginTop: 32 }} />
+            ) : (
+              <FlatList
+                data={users}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.listContent}
+                renderItem={({ item }) => {
+                  const isSelf = item.id === currentUser?.uid;
+                  const isAdminUser = item.role === 'admin';
+
+                  return (
+                    <View style={styles.userRow}>
+                      <View style={styles.userInfoColumn}>
+                        <Text style={styles.userName}>{item.displayName}</Text>
+                        <Text style={styles.userMeta}>{item.email}</Text>
+                        <Text style={styles.userMeta}>XP: {item.xp || 0} · Level: {item.level || 1}</Text>
+                        {isAdminUser && <Text style={styles.userRole}>ADMIN</Text>}
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.deleteTagButton, (isSelf || isAdminUser) && styles.deleteDisabledButton]}
+                        onPress={() => handleDeleteManagedUser(item)}
+                        disabled={isSelf || isAdminUser}
+                      >
+                        <Text style={styles.deleteButtonText}>{isSelf ? 'You' : isAdminUser ? 'Admin' : 'Delete'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No users found</Text>
                   </View>
                 }
               />
@@ -947,6 +1041,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 7,
+  },
+  deleteDisabledButton: {
+    backgroundColor: 'rgba(120,120,120,0.55)',
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  userInfoColumn: {
+    flex: 1,
+    marginRight: 8,
+  },
+  userName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  userMeta: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  userRole: {
+    color: '#FFD166',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
   },
   deleteButtonText: {
     color: '#fff',

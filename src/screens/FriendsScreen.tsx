@@ -322,6 +322,24 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
     return currentUserData?.friends?.includes(userId) || false;
   };
 
+  const isUserOnlineNow = (user?: Partial<User> | null): boolean => {
+    if (!user?.isOnline) return false;
+
+    const rawLastActive = (user as any).lastActive;
+    let lastActive: Date | null = null;
+
+    if (rawLastActive instanceof Date) {
+      lastActive = rawLastActive;
+    } else if (rawLastActive?.toDate) {
+      lastActive = rawLastActive.toDate();
+    } else if (rawLastActive) {
+      lastActive = new Date(rawLastActive);
+    }
+
+    if (!lastActive) return false;
+    return Date.now() - lastActive.getTime() <= 2 * 60 * 1000;
+  };
+
   const handleStartChat = (friend: User) => {
     const currentUserId = auth.currentUser?.uid;
     if (!currentUserId) return;
@@ -379,7 +397,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
             <View style={styles.friendNameRow}>
               <Text style={styles.friendName}>{item.displayName}</Text>
               <Text style={styles.friendStatus}>
-                {item.isOnline ? '🟢 Online' : '⚪ Offline'}
+                {isUserOnlineNow(item) ? '🟢 Online' : '⚪ Offline'}
               </Text>
             </View>
             {item.lastMessage && (

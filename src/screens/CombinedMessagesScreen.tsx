@@ -322,6 +322,24 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     return currentUserData?.friends?.includes(userId) || false;
   };
 
+  const isUserOnlineNow = (user?: Partial<User> | null): boolean => {
+    if (!user?.isOnline) return false;
+
+    const rawLastActive = (user as any).lastActive;
+    let lastActive: Date | null = null;
+
+    if (rawLastActive instanceof Date) {
+      lastActive = rawLastActive;
+    } else if (rawLastActive?.toDate) {
+      lastActive = rawLastActive.toDate();
+    } else if (rawLastActive) {
+      lastActive = new Date(rawLastActive);
+    }
+
+    if (!lastActive) return false;
+    return Date.now() - lastActive.getTime() <= 2 * 60 * 1000;
+  };
+
   const handleStartBotChat = async () => {
     try {
       const { startBotConversation } = await import('@/services/friendsService');
@@ -464,7 +482,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                     <View style={styles.listItemContent}>
                       <Text style={styles.listItemTitle}>{item.displayName}</Text>
                       <Text style={styles.listItemSubtitle}>
-                        {item.isOnline ? '🟢 Online' : '⚫ Offline'}
+                        {isUserOnlineNow(item) ? '🟢 Online' : '⚫ Offline'}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -607,7 +625,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
             <View style={styles.chatHeaderContent}>
               <Text style={styles.chatHeaderTitle}>{otherUser.displayName}</Text>
               <Text style={styles.chatHeaderSubtitle}>
-                {otherUser.isOnline ? '🟢 Online' : '⚫ Offline'}
+                {isUserOnlineNow(otherUser) ? '🟢 Online' : '⚫ Offline'}
               </Text>
             </View>
           </View>

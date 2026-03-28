@@ -795,19 +795,22 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
               <TouchableOpacity onPress={() => onNavigateToProfile(item.userId)}>
                 <Text style={[styles.username, styles.clickableUsername]}>{item.user.displayName}</Text>
               </TouchableOpacity>
-              {!isOwnPost && !userIsFriend && (
+              {!isOwnPost && !userIsFollowed && (
                 <TouchableOpacity
-                  style={[styles.followButton, userIsFollowed && styles.followingButton]}
+                  style={styles.followButton}
                   onPress={() => userIsFollowed ? handleUnfollowUser(item.userId) : handleFollowUser(item.userId)}
                 >
-                  <Text style={[styles.followButtonText, userIsFollowed && styles.followingButtonText]}>
-                    {userIsFollowed ? 'Following' : 'Follow'}
-                  </Text>
+                  <Text style={styles.followButtonText}>Follow</Text>
                 </TouchableOpacity>
               )}
               {userIsFriend && (
                 <View style={styles.friendBadge}>
                   <Text style={styles.friendBadgeText}>Friend</Text>
+                </View>
+              )}
+              {userIsFollowed && !isOwnPost && (
+                <View style={styles.followingBadge}>
+                  <Text style={styles.followingBadgeText}>Following</Text>
                 </View>
               )}
             </View>
@@ -1878,6 +1881,20 @@ const styles = StyleSheet.create({
   },
   friendBadgeText: {
     color: 'white',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  followingBadge: {
+    backgroundColor: 'rgba(46, 204, 113, 0.22)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(46, 204, 113, 0.45)',
+  },
+  followingBadgeText: {
+    color: '#B8F7D4',
     fontSize: 11,
     fontWeight: '600',
   },

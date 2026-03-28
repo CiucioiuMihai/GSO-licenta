@@ -19,8 +19,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { auth } from '@/services/firebase';
 import { updateUserProfile } from '@/services/firestore';
-import { getUserDataWithCounts } from '@/services/postsService';
+import { getUserDataWithCounts, followUser, unfollowUser } from '@/services/postsService';
 import { getUserPosts } from '@/services/postsService';
+import { sendFriendRequest } from '@/services/friendsService';
+import { createReport } from '@/services/reportService';
 import { User, Post } from '@/types';
 import { calculateLevel } from '@/utils/gamification';
 import { ACHIEVEMENT_DEFINITIONS } from '@/types';
@@ -65,7 +67,22 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [selectedImage, setSelectedImage] = useState('');
   const [selectedPostImages, setSelectedPostImages] = useState<any[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [isFollowingUser, setIsFollowingUser] = useState(false);
+  const [isFriendUser, setIsFriendUser] = useState(false);
+  const [sendingFriendRequest, setSendingFriendRequest] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [selectedReportReason, setSelectedReportReason] = useState('');
   const currentUser = auth.currentUser;
+
+  const REPORT_REASONS = [
+    'Spam or scam',
+    'Harassment or bullying',
+    'Hate speech',
+    'Inappropriate profile content',
+    'Impersonation',
+    'Other',
+  ];
   
   // Determine if viewing own profile or another user's profile
   const viewingUserId = userId || currentUser?.uid;
@@ -111,6 +128,76 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
       }
     };
   }, [fetchUserData, fetchUserPosts]);
+
+  useEffect(() => {
+    const loadRelationshipStatus = async () => {
+      if (!currentUser || !viewingUserId || isOwnProfile) return;
+
+      try {
+        const currentUserDataWithCounts = await getUserDataWithCounts(currentUser.uid);
+        setIsFollowingUser(currentUserDataWithCounts?.following?.includes(viewingUserId) || false);
+        setIsFriendUser(currentUserDataWithCounts?.friends?.includes(viewingUserId) || false);
+      } catch (error) {
+        console.error('Error loading relationship status:', error);
+      }
+    };
+
+    loadRelationshipStatus();
+  }, [currentUser, viewingUserId, isOwnProfile]);
+
+  const handleFollowToggle = async () => {
+    if (!viewingUserId || !currentUser || isOwnProfile || followLoading) return;
+
+    setFollowLoading(true);
+    try {
+      if (isFollowingUser) {
+        await unfollowUser(viewingUserId);
+        setIsFollowingUser(false);
+      } else {
+        await followUser(viewingUserId);
+        setIsFollowingUser(true);
+      }
+      await fetchUserData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update follow status');
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleSendFriendRequest = async () => {
+    if (!viewingUserId || !currentUser || isOwnProfile || sendingFriendRequest) return;
+
+    setSendingFriendRequest(true);
+    try {
+      await sendFriendRequest(viewingUserId);
+      Alert.alert('Success', 'Friend request sent');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to send friend request');
+    } finally {
+      setSendingFriendRequest(false);
+    }
+  };
+
+  const handleReportUser = async () => {
+    if (!viewingUserId || !userData) return;
+    if (!selectedReportReason) {
+      Alert.alert('Choose a reason', 'Please select a report reason.');
+      return;
+    }
+
+    try {
+      await createReport('user', viewingUserId, selectedReportReason, {
+        userId: viewingUserId,
+        userName: userData.displayName,
+      });
+      setReportModalVisible(false);
+      setSelectedReportReason('');
+      Alert.alert('Reported', 'Thank you. Your report has been submitted.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to submit report');
+    }
+  };
 
   const handleNavbarTabPress = (tab: string) => {
     setNavbarTab(tab);
@@ -366,6 +453,51 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
             {/* User Name */}
             <Text style={styles.displayName}>{userData?.displayName}</Text>
+
+            {!isOwnProfile && (
+              <View style={styles.relationshipRow}>
+                {isFriendUser ? (
+                  <View style={styles.friendBadge}>
+                    <Text style={styles.friendBadgeText}>Friend</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.relationshipButton, styles.friendActionButton]}
+                    onPress={handleSendFriendRequest}
+                    disabled={sendingFriendRequest}
+                  >
+                    <Text style={styles.relationshipButtonText}>
+                      {sendingFriendRequest ? 'Sending...' : 'Add Friend'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {isFollowingUser ? (
+                  <TouchableOpacity style={styles.followingBadge} onPress={handleFollowToggle} disabled={followLoading}>
+                    <Text style={styles.followingBadgeText}>Following</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.relationshipButton, styles.followActionButton]}
+                    onPress={handleFollowToggle}
+                    disabled={followLoading}
+                  >
+                    <Text style={styles.relationshipButtonText}>
+                      {followLoading ? 'Working...' : 'Follow'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {!isOwnProfile && (
+              <TouchableOpacity
+                style={styles.reportUserButton}
+                onPress={() => setReportModalVisible(true)}
+              >
+                <Text style={styles.reportUserButtonText}>Report User</Text>
+              </TouchableOpacity>
+            )}
             
             {/* Level */}
             <View style={styles.levelBadge}>
@@ -555,6 +687,52 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </LinearGradient>
           </View>
         </Modal>
+
+        {/* Report User Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={reportModalVisible}
+          onRequestClose={() => setReportModalVisible(false)}
+        >
+          <View style={styles.reportModalContainer}>
+            <LinearGradient colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.92)']} style={styles.reportModalGradient}>
+              <View style={styles.reportModalHeader}>
+                <Text style={styles.reportModalTitle}>Report User</Text>
+                <TouchableOpacity onPress={() => setReportModalVisible(false)}>
+                  <Text style={styles.closeImageButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.reportModalSubtitle}>Choose a reason:</Text>
+              <View style={styles.reasonList}>
+                {REPORT_REASONS.map((reason) => (
+                  <TouchableOpacity
+                    key={reason}
+                    style={[
+                      styles.reasonOption,
+                      selectedReportReason === reason && styles.reasonOptionSelected,
+                    ]}
+                    onPress={() => setSelectedReportReason(reason)}
+                  >
+                    <Text
+                      style={[
+                        styles.reasonOptionText,
+                        selectedReportReason === reason && styles.reasonOptionTextSelected,
+                      ]}
+                    >
+                      {reason}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity style={styles.submitReportButton} onPress={handleReportUser}>
+                <Text style={styles.submitReportButtonText}>Submit Report</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
+        </Modal>
         
         {/* Navbar */}
         <Navbar activeTab={navbarTab} onTabPress={handleNavbarTabPress} user={userData} />
@@ -669,6 +847,68 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
     fontSize: 14,
+  },
+  relationshipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 14,
+    gap: 8,
+  },
+  relationshipButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
+  friendActionButton: {
+    backgroundColor: 'rgba(118, 75, 162, 0.75)',
+  },
+  followActionButton: {
+    backgroundColor: 'rgba(102, 126, 234, 0.75)',
+  },
+  relationshipButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  friendBadge: {
+    backgroundColor: 'rgba(118, 75, 162, 0.65)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  friendBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  followingBadge: {
+    backgroundColor: 'rgba(46, 204, 113, 0.2)',
+    borderColor: 'rgba(46, 204, 113, 0.45)',
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  followingBadgeText: {
+    color: '#B8F7D4',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  reportUserButton: {
+    marginBottom: 14,
+    backgroundColor: 'rgba(220, 53, 69, 0.12)',
+    borderColor: 'rgba(220, 53, 69, 0.45)',
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
+  reportUserButtonText: {
+    color: '#b22222',
+    fontSize: 12,
+    fontWeight: '700',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -896,6 +1136,66 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  reportModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  reportModalGradient: {
+    width: '88%',
+    borderRadius: 16,
+    padding: 18,
+  },
+  reportModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  reportModalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  reportModalSubtitle: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  reasonList: {
+    gap: 8,
+  },
+  reasonOption: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  reasonOptionSelected: {
+    backgroundColor: 'rgba(220,53,69,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,120,120,0.8)',
+  },
+  reasonOptionText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  reasonOptionTextSelected: {
+    fontWeight: '700',
+  },
+  submitReportButton: {
+    backgroundColor: '#b22222',
+    borderRadius: 10,
+    marginTop: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  submitReportButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   imageModalContainer: {
     flex: 1,

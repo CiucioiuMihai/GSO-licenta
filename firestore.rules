@@ -48,6 +48,10 @@ service cloud.firestore {
           'achievements' in request.resource.data.diff(resource.data).affectedKeys() ||
           'dailyStreak' in request.resource.data.diff(resource.data).affectedKeys() ||
           'lastLoginDate' in request.resource.data.diff(resource.data).affectedKeys() ||
+          'lastDailyQuestDate' in request.resource.data.diff(resource.data).affectedKeys() ||
+          'dailyQuestAssignedDate' in request.resource.data.diff(resource.data).affectedKeys() ||
+          'dailyQuestCompletedDate' in request.resource.data.diff(resource.data).affectedKeys() ||
+          'activeDailyQuest' in request.resource.data.diff(resource.data).affectedKeys() ||
           'totalFriends' in request.resource.data.diff(resource.data).affectedKeys() ||
           'totalFollowers' in request.resource.data.diff(resource.data).affectedKeys() ||
           'totalFollowing' in request.resource.data.diff(resource.data).affectedKeys()
@@ -61,6 +65,9 @@ service cloud.firestore {
           'notificationsEnabled' in request.resource.data.diff(resource.data).affectedKeys() ||
           'webNotificationsEnabled' in request.resource.data.diff(resource.data).affectedKeys()
         );
+
+      // Admin can delete users for moderation
+      allow delete: if isAdmin();
     }
     
     // Posts - users can create their own posts, everyone can read posts
@@ -89,7 +96,7 @@ service cloud.firestore {
          'likedBy' in request.resource.data.diff(resource.data).affectedKeys() || // Anyone can like
          'repliesCount' in request.resource.data.diff(resource.data).affectedKeys()); // Replies count update
       allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.userId;
+        (request.auth.uid == resource.data.userId || isAdmin());
     }
     
     // Replies - users can create replies, read all replies, update/delete their own
@@ -103,7 +110,7 @@ service cloud.firestore {
          'likes' in request.resource.data.diff(resource.data).affectedKeys() || // Anyone can like
          'likedBy' in request.resource.data.diff(resource.data).affectedKeys()); // Anyone can like
       allow delete: if request.auth != null && 
-        request.auth.uid == resource.data.userId;
+        (request.auth.uid == resource.data.userId || isAdmin());
     }
     
     // Tags - anyone can read, system can create/update (via posts service), admins can delete
@@ -119,7 +126,12 @@ service cloud.firestore {
         request.auth.uid == request.resource.data.fromUserId;
       allow read, update: if request.auth != null && 
         (request.auth.uid == resource.data.fromUserId || 
-         request.auth.uid == resource.data.toUserId);
+         request.auth.uid == resource.data.toUserId ||
+         isAdmin());
+      allow delete: if request.auth != null && 
+        (request.auth.uid == resource.data.fromUserId ||
+         request.auth.uid == resource.data.toUserId ||
+         isAdmin());
     }
     
     // Conversations

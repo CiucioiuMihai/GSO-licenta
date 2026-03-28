@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ScrollView,
   Platform,
   RefreshControl,
@@ -14,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/services/firebase';
 import { getUserDataWithCounts } from '@/services/postsService';
-import { handleDailyLogin, syncUserXP } from '@/services/levelService';
+import { claimDailyQuestXP, ensureDailyQuestForToday, handleDailyLogin, syncUserXP } from '@/services/levelService';
 import { User } from '@/types';
 import Navbar from '../components/Navbar';
 
@@ -42,6 +41,65 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dailyLoginChecked, setDailyLoginChecked] = useState(false);
+  const [dailyQuestLoading, setDailyQuestLoading] = useState(false);
+  const [resetCountdown, setResetCountdown] = useState('');
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; kind: 'success' | 'info' | 'error' }>({
+    visible: false,
+    message: '',
+    kind: 'info',
+  });
+  const snackbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const hasClaimedDailyQuestToday = useCallback((lastClaim?: Date) => {
+    if (!lastClaim) {
+      return false;
+    }
+
+    let claimDate: Date;
+    if (typeof lastClaim === 'object' && 'toDate' in (lastClaim as any)) {
+      claimDate = (lastClaim as any).toDate();
+    } else if (lastClaim instanceof Date) {
+      claimDate = lastClaim;
+    } else {
+      claimDate = new Date(lastClaim as any);
+    }
+
+    if (Number.isNaN(claimDate.getTime())) {
+      return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    claimDate.setHours(0, 0, 0, 0);
+    return claimDate.toDateString() === today.toDateString();
+  }, []);
+
+  const getDailyResetCountdown = useCallback(() => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const msLeft = tomorrow.getTime() - now.getTime();
+    const totalMinutes = Math.max(0, Math.floor(msLeft / (1000 * 60)));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    return `Resets in ${hours}h ${minutes}m`;
+  }, []);
+
+  const showSnackbar = useCallback((message: string, kind: 'success' | 'info' | 'error' = 'info') => {
+    if (snackbarTimeoutRef.current) {
+      clearTimeout(snackbarTimeoutRef.current);
+      snackbarTimeoutRef.current = null;
+    }
+
+    setSnackbar({ visible: true, message, kind });
+    snackbarTimeoutRef.current = setTimeout(() => {
+      setSnackbar(prev => ({ ...prev, visible: false }));
+      snackbarTimeoutRef.current = null;
+    }, 2400);
+  }, []);
 
   const fetchUserData = useCallback(async (checkDailyLogin: boolean = false) => {
     if (user?.uid) {
@@ -65,6 +123,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
           await handleDailyLogin(user.uid, userDataWithCounts);
           setDailyLoginChecked(true);
         }
+
+        await ensureDailyQuestForToday(user.uid);
         
         // Refresh user data to get updated XP, level, and streak
         const updatedUserData = await getUserDataWithCounts(user.uid);
@@ -85,6 +145,25 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
     loadData();
   }, [user?.uid]); // Remove fetchUserData from dependencies to prevent loops
 
+  useEffect(() => {
+    setResetCountdown(getDailyResetCountdown());
+    const interval = setInterval(() => {
+      setResetCountdown(getDailyResetCountdown());
+    }, 30000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [getDailyResetCountdown]);
+
+  useEffect(() => {
+    return () => {
+      if (snackbarTimeoutRef.current) {
+        clearTimeout(snackbarTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Pull to refresh functionality
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -95,9 +174,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      Alert.alert('Success', 'Logged out successfully');
+      showSnackbar('Logged out successfully', 'success');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Logout failed');
+      showSnackbar(error.message || 'Logout failed', 'error');
     }
   };
 
@@ -131,7 +210,51 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
     }, 1000);
   };
 
+  const handleClaimDailyQuest = async () => {
+    if (!user?.uid || !userData || dailyQuestLoading) {
+      return;
+    }
+
+    const alreadyClaimed = hasClaimedDailyQuestToday(userData.lastDailyQuestDate);
+    if (alreadyClaimed) {
+      showSnackbar('Daily quest already claimed. Come back tomorrow.', 'info');
+      return;
+    }
+
+    if (!userData.activeDailyQuest?.completed) {
+      showSnackbar('Complete the daily quest first, then claim your XP.', 'info');
+      return;
+    }
+
+    try {
+      setDailyQuestLoading(true);
+      const result = await claimDailyQuestXP(user.uid);
+
+      if (result.alreadyClaimed) {
+        showSnackbar('Daily quest already claimed for today.', 'info');
+      } else if (result.notCompleted) {
+        showSnackbar('Daily quest is not completed yet.', 'info');
+      } else {
+        const levelUpMessage = result.leveledUp && result.newLevel
+          ? ` You reached level ${result.newLevel}!`
+          : '';
+        showSnackbar(`Quest completed! +${result.xpAwarded} XP.${levelUpMessage}`, 'success');
+      }
+
+      await fetchUserData(false);
+    } catch (error) {
+      console.error('Error claiming daily quest:', error);
+      showSnackbar('Could not claim daily quest right now. Try again.', 'error');
+    } finally {
+      setDailyQuestLoading(false);
+    }
+  };
+
   const isWeb = Platform.OS === 'web';
+  const dailyQuestClaimedToday = hasClaimedDailyQuestToday(userData?.lastDailyQuestDate);
+  const activeQuest = userData?.activeDailyQuest;
+  const questProgressText = activeQuest ? `${activeQuest.progress}/${activeQuest.target}` : '--/--';
+  const canClaimQuest = !!activeQuest?.completed && !dailyQuestClaimedToday;
 
   return (
     <View style={styles.container}>
@@ -207,7 +330,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
                   </TouchableOpacity>
                   
                   <TouchableOpacity style={styles.actionCard} onPress={onNavigateToFriends}>
-                    <Text style={styles.actionIcon}>�</Text>
+                    <Text style={styles.actionIcon}>💬</Text>
                     <Text style={styles.actionTitle}>Messages</Text>
                     <Text style={styles.actionSubtitle}>Chat & friends</Text>
                   </TouchableOpacity>
@@ -220,22 +343,69 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
                 </View>
               </View>
 
-              {/* Feed Placeholder */}
+              {/* Activity Snapshot */}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>📱 Your Feed</Text>
-                <View style={styles.feedPlaceholder}>
-                  <Text style={styles.placeholderIcon}>🎉</Text>
-                  <Text style={styles.placeholderTitle}>Welcome to GSO!</Text>
-                  <Text style={styles.placeholderText}>
-                    Start by creating your first post or connecting with friends. 
-                    Your personalized feed will appear here.
-                  </Text>
-                  <View style={styles.placeholderButtons}>
-                    <TouchableOpacity style={styles.placeholderButton} onPress={handleCreatePost}>
-                      <Text style={styles.placeholderButtonText}>Create Post</Text>
+                <Text style={styles.sectionTitle}>📊 Activity Snapshot</Text>
+                <View style={styles.snapshotCard}>
+                  <View style={styles.snapshotRow}>
+                    <View style={styles.snapshotItem}>
+                      <Text style={styles.snapshotValue}>{loading ? '--' : userData?.dailyStreak || 0}</Text>
+                      <Text style={styles.snapshotLabel}>Day Streak</Text>
+                    </View>
+                    <View style={styles.snapshotDivider} />
+                    <View style={styles.snapshotItem}>
+                      <Text style={styles.snapshotValue}>{loading ? '--' : userData?.totalFollowers || 0}</Text>
+                      <Text style={styles.snapshotLabel}>Followers</Text>
+                    </View>
+                    <View style={styles.snapshotDivider} />
+                    <View style={styles.snapshotItem}>
+                      <Text style={styles.snapshotValue}>{loading ? '--' : userData?.totalFollowing || 0}</Text>
+                      <Text style={styles.snapshotLabel}>Following</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.snapshotActions}>
+                    <TouchableOpacity style={styles.snapshotButton} onPress={onNavigateToPostsFeed}>
+                      <Text style={styles.snapshotButtonText}>📱 Open Feed</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.placeholderButton, styles.secondaryButton]} onPress={onNavigateToPostsFeed}>
-                      <Text style={styles.placeholderButtonText}>View Feed</Text>
+                    <TouchableOpacity style={[styles.snapshotButton, styles.snapshotButtonAlt]} onPress={onNavigateToFriends}>
+                      <Text style={styles.snapshotButtonText}>💬 Open Messages</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.dailyQuestCard}>
+                    <Text style={styles.dailyQuestTitle}>⚔️ {activeQuest?.title || 'Daily Quest'}</Text>
+                    <Text style={styles.dailyQuestSubtitle}>
+                      {activeQuest?.description || 'Preparing your quest...'}
+                    </Text>
+                    <View style={styles.dailyQuestMetaRow}>
+                      <Text style={styles.dailyQuestProgress}>Progress: {questProgressText}</Text>
+                      <Text style={styles.dailyQuestStatus}>
+                        {dailyQuestClaimedToday
+                          ? 'Reward claimed'
+                          : activeQuest?.completed
+                          ? 'Completed'
+                          : 'In progress'}
+                      </Text>
+                    </View>
+                    <Text style={styles.dailyQuestResetText}>{resetCountdown}</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.dailyQuestButton,
+                        (!canClaimQuest || dailyQuestLoading) && styles.dailyQuestButtonDisabled,
+                      ]}
+                      onPress={handleClaimDailyQuest}
+                      disabled={!canClaimQuest || dailyQuestLoading || loading}
+                    >
+                      <Text style={styles.dailyQuestButtonText}>
+                        {dailyQuestLoading
+                          ? 'Claiming...'
+                          : dailyQuestClaimedToday
+                          ? 'Claimed Today'
+                          : activeQuest?.completed
+                          ? 'Claim +15 XP'
+                          : 'Complete Quest First'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -250,6 +420,19 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
           
           {/* Navbar */}
           <Navbar activeTab={activeTab} onTabPress={handleTabPress} user={userData} />
+
+          {snackbar.visible && (
+            <View
+              style={[
+                styles.snackbar,
+                snackbar.kind === 'success' && styles.snackbarSuccess,
+                snackbar.kind === 'error' && styles.snackbarError,
+                snackbar.kind === 'info' && styles.snackbarInfo,
+              ]}
+            >
+              <Text style={styles.snackbarText}>{snackbar.message}</Text>
+            </View>
+          )}
         </SafeAreaView>
       </LinearGradient>
     </View>
@@ -381,53 +564,116 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     textAlign: 'center',
   },
-  feedPlaceholder: {
+  snapshotCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderRadius: 12,
-    padding: 30,
-    alignItems: 'center',
+    padding: 18,
     borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  placeholderIcon: {
-    fontSize: 48,
-    marginBottom: 15,
+  snapshotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  placeholderTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+  snapshotItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  snapshotValue: {
+    fontSize: 22,
+    fontWeight: '700',
     color: '#fff',
-    marginBottom: 10,
-    textAlign: 'center',
+    marginBottom: 4,
   },
-  placeholderText: {
-    fontSize: 14,
+  snapshotLabel: {
+    fontSize: 12,
     color: '#fff',
-    opacity: 0.8,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-    maxWidth: 280,
+    opacity: 0.75,
   },
-  placeholderButtons: {
+  snapshotDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  snapshotActions: {
     flexDirection: 'row',
     gap: 10,
+    marginTop: 16,
   },
-  placeholderButton: {
-    backgroundColor: '#fff',
+  snapshotButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
     borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     flex: 1,
   },
-  secondaryButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  snapshotButtonAlt: {
+    backgroundColor: 'rgba(102, 126, 234, 0.35)',
   },
-  placeholderButtonText: {
-    fontSize: 16,
+  snapshotButtonText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#667eea',
+    color: '#fff',
     textAlign: 'center',
+  },
+  dailyQuestCard: {
+    marginTop: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  dailyQuestTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 6,
+  },
+  dailyQuestSubtitle: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.85,
+    marginBottom: 6,
+  },
+  dailyQuestMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  dailyQuestProgress: {
+    fontSize: 12,
+    color: '#fff',
+    opacity: 0.85,
+    fontWeight: '600',
+  },
+  dailyQuestStatus: {
+    fontSize: 12,
+    color: '#fff',
+    opacity: 0.8,
+  },
+  dailyQuestResetText: {
+    fontSize: 12,
+    color: '#fff',
+    opacity: 0.75,
+    marginBottom: 12,
+  },
+  dailyQuestButton: {
+    backgroundColor: 'rgba(76, 175, 80, 0.35)',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  dailyQuestButtonDisabled: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  dailyQuestButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
   },
   logoutButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -443,6 +689,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     opacity: 0.8,
+  },
+  snackbar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: Platform.OS === 'web' ? 24 : 96,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    zIndex: 20,
+    borderWidth: Platform.OS === 'android' ? 0 : 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  snackbarSuccess: {
+    backgroundColor: 'rgba(46, 125, 50, 0.92)',
+  },
+  snackbarInfo: {
+    backgroundColor: 'rgba(30, 136, 229, 0.92)',
+  },
+  snackbarError: {
+    backgroundColor: 'rgba(198, 40, 40, 0.92)',
+  },
+  snackbarText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
 

@@ -86,6 +86,9 @@ export const createPost = async (content: string, tags: string[] = [], images?: 
     }
 
     await batch.commit();
+
+    const { trackDailyQuestProgress } = await import('./levelService');
+    await trackDailyQuestProgress(currentUser.uid, 'create_post');
     console.log('Post created successfully');
   } catch (error) {
     console.error('Error creating post:', error);
@@ -312,6 +315,9 @@ export const likePost = async (postId: string): Promise<void> => {
       likes: increment(1),
       likedBy: arrayUnion(currentUser.uid)
     });
+
+    const { trackDailyQuestProgress } = await import('./levelService');
+    await trackDailyQuestProgress(currentUser.uid, 'like_post');
   }
 };
 
@@ -399,6 +405,9 @@ export const addComment = async (postId: string, text: string): Promise<void> =>
     });
 
     await batch.commit();
+
+    const { trackDailyQuestProgress } = await import('./levelService');
+    await trackDailyQuestProgress(currentUser.uid, 'add_comment');
     
     // Award XP to post owner (if not commenting on own post)
     if (postOwnerId !== currentUser.uid) {
