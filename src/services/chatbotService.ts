@@ -2,8 +2,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { User } from '@/types';
 
 // Initialize Gemini AI
-const GEMINI_API_KEY = 'AIzaSyCuPDeaGRjFZYLfTrIDF5ZgnowtbBG3bhA';
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY?.trim();
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // Bot user ID constant
 export const BOT_USER_ID = 'system_bot_assistant';
@@ -41,6 +41,10 @@ export const getBotResponse = async (
   userData?: User | null
 ): Promise<string> => {
   try {
+    if (!genAI) {
+      throw new Error('Missing EXPO_PUBLIC_GEMINI_API_KEY');
+    }
+
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     // Build context about the user and app

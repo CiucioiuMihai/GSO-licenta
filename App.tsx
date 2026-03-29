@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OfflineProvider } from './src/context/OfflineContext';
-import OfflineIndicator from './src/components/OfflineIndicator';
+import { CompactOfflineIndicator } from './src/components/OfflineIndicator';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import React, { useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -57,7 +57,7 @@ const App: React.FC = () => {
   return (
     <SafeAreaProvider>
       <OfflineProvider>
-        <OfflineIndicator />
+        <CompactOfflineIndicator />
         <AuthNavigator />
         <StatusBar style="light" />
       </OfflineProvider>
