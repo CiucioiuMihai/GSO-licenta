@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Platform, BackHandler } from 'react-native';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/services/firebase';
+import { addNotificationResponseListener } from '@/services/notificationService';
 import LoginScreen from '@/screens/LoginScreen';
 import RegisterScreen from '@/screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
@@ -91,6 +92,18 @@ const AuthNavigator: React.FC = () => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', onHardwareBackPress);
     return () => subscription.remove();
   }, [authState, currentScreen, screenHistory]);
+
+  useEffect(() => {
+    const subscription = addNotificationResponseListener((response) => {
+      const data = (response.notification.request.content.data || {}) as { screen?: string; type?: string };
+
+      if (data.screen === 'home' || data.type === 'daily_quest_completed') {
+        navigateTo('home');
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const handleNavigateToRegister = () => {
     navigateTo('register');

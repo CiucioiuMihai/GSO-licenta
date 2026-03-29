@@ -158,20 +158,39 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
   const handleSendMessage = async () => {
     if (!newMessage.trim() || loading) return;
 
-    console.log('Sending message:', newMessage.trim(), 'to user:', otherUserId);
+    const text = newMessage.trim();
+    console.log('Sending message:', text, 'to user:', otherUserId);
     setLoading(true);
     try {
       // Check if messaging the bot
       if (otherUserId === BOT_USER_ID) {
         // Send message and get bot response
-        await sendMessageWithBotResponse(otherUserId, newMessage.trim(), currentUserData);
+        await sendMessageWithBotResponse(otherUserId, text, currentUserData);
         console.log('Message sent to bot successfully');
       } else {
+        const isOfflineSend = !offlineService.isConnected();
+
+        if (isOfflineSend && currentUser?.uid) {
+          const optimisticMessage: DirectMessage = {
+            id: `offline_${Date.now()}`,
+            conversationId,
+            fromUserId: currentUser.uid,
+            toUserId: otherUserId,
+            message: text,
+            read: false,
+            createdAt: new Date(),
+          };
+          setMessages((prev) => [...prev, optimisticMessage]);
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }, 50);
+        }
+
         // Use offline service for automatic offline support (regular users)
         await offlineService.sendDirectMessage(
           currentUser?.uid || '',
           otherUserId,
-          newMessage.trim()
+          text
         );
         console.log('Message sent successfully');
       }
@@ -196,6 +215,7 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
   const renderMessage = ({ item }: { item: DirectMessage }) => {
     console.log('Rendering message:', item);
     const isOwnMessage = item.fromUserId === currentUser?.uid;
+    const isPendingMessage = item.id.startsWith('offline_');
     
     // Safety check for createdAt
     const messageTime = item.createdAt instanceof Date 
@@ -226,6 +246,11 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
               minute: '2-digit' 
             })}
           </Text>
+          {isPendingMessage && (
+            <Text style={[styles.pendingSyncText, isOwnMessage ? styles.ownPendingSyncText : styles.otherPendingSyncText]}>
+              Pending sync
+            </Text>
+          )}
         </View>
       </View>
     );
@@ -443,6 +468,18 @@ const styles = StyleSheet.create({
   },
   otherMessageTime: {
     // Same styling for consistency
+  },
+  pendingSyncText: {
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  ownPendingSyncText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'right',
+  },
+  otherPendingSyncText: {
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   inputContainer: {
     flexDirection: 'row',

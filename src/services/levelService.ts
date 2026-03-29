@@ -447,6 +447,20 @@ export const trackDailyQuestProgress = async (
     return { updated: true, completed, quest: updatedQuest };
   });
 
+  if (result.updated && result.completed) {
+    try {
+      const { sendLocalNotification } = await import('./notificationService');
+      await sendLocalNotification(
+        'Daily Quest Complete',
+        `${result.quest.title} completed. Claim your XP reward from Home!`,
+        { type: 'daily_quest_completed', screen: 'home' }
+      );
+    } catch (error) {
+      // Notification failures should never block quest progress.
+      console.error('Error sending daily quest completion notification:', error);
+    }
+  }
+
   return result;
 };
 

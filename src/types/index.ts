@@ -292,7 +292,7 @@ export interface SyncStatus {
 
 export interface OfflineAction {
   id: string;
-  type: 'CREATE_POST' | 'LIKE_POST' | 'CREATE_COMMENT' | 'SEND_MESSAGE';
+  type: 'CREATE_POST' | 'LIKE_POST' | 'CREATE_COMMENT' | 'CREATE_REPLY' | 'SEND_MESSAGE';
   userId: string;
   data: any;
   timestamp: number;

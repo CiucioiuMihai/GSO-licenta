@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   BackHandler,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -84,6 +85,14 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
 
+  const scrollMessagesToBottom = (animated: boolean = true) => {
+    // Multiple attempts handle async layout/measurement timing on mobile.
+    const run = () => flatListRef.current?.scrollToEnd({ animated });
+    run();
+    requestAnimationFrame(run);
+    setTimeout(run, 60);
+  };
+
   useEffect(() => {
     loadFriends();
     
@@ -152,9 +161,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 
     const unsubscribe = getConversationMessages(selectedConversation, (newMessages) => {
       setMessages(newMessages);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      scrollMessagesToBottom(true);
     });
 
     markMessagesAsRead(selectedConversation).catch(console.error);
@@ -163,6 +170,11 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
       unsubscribe();
     };
   }, [selectedConversation]);
+
+  useEffect(() => {
+    if (!selectedConversation) return;
+    scrollMessagesToBottom(false);
+  }, [selectedConversation, messages.length]);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || isWeb || isTablet) {
@@ -241,18 +253,35 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   const handleSendMessage = async () => {
     if (!newMessage.trim() || loading || !selectedUserId) return;
 
+    const text = newMessage.trim();
     setLoading(true);
     try {
       // Check if messaging the bot
       if (selectedUserId === BOT_USER_ID) {
         // Send message and get bot response
-        await sendMessageWithBotResponse(selectedUserId, newMessage.trim(), currentUserData);
+        await sendMessageWithBotResponse(selectedUserId, text, currentUserData);
       } else {
+        const isOfflineSend = !offlineService.isConnected();
+
+        if (isOfflineSend && currentUser?.uid) {
+          const optimisticMessage: DirectMessage = {
+            id: `offline_${Date.now()}`,
+            conversationId: selectedConversation || `temp_${selectedUserId}`,
+            fromUserId: currentUser.uid,
+            toUserId: selectedUserId,
+            message: text,
+            read: false,
+            createdAt: new Date(),
+          };
+          setMessages((prev) => [...prev, optimisticMessage]);
+          setTimeout(() => scrollMessagesToBottom(true), 50);
+        }
+
         // Use offline service for regular users
         await offlineService.sendDirectMessage(
           currentUser?.uid || '',
           selectedUserId,
-          newMessage.trim()
+          text
         );
       }
       setNewMessage('');
@@ -500,6 +529,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
         <FlatList
           style={styles.sidebarList}
           contentContainerStyle={styles.sidebarListContent}
+          showsVerticalScrollIndicator={false}
           data={
             activeTab === 'conversations' ? conversations :
             activeTab === 'friends' ? friends :
@@ -527,6 +557,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
             if (activeTab === 'conversations') {
               const otherUserId = getOtherUserId(item);
               const otherUserName = item.otherUserName || 'Unknown User';
+              const otherUser = friends.find(f => f.id === otherUserId);
               
               return (
                 <TouchableOpacity
@@ -536,6 +567,18 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                   ]}
                   onPress={() => otherUserId && handleStartChat(otherUserId, item.id)}
                 >
+                  {otherUser?.profilePicture ? (
+                    <Image
+                      source={{ uri: otherUser.profilePicture }}
+                      style={styles.listItemAvatar}
+                    />
+                  ) : (
+                    <View style={styles.listItemAvatarPlaceholder}>
+                      <Text style={styles.listItemAvatarText}>
+                        {otherUserName.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
                   <View style={styles.listItemContent}>
                     <Text style={styles.listItemTitle}>{otherUserName}</Text>
                     <Text style={styles.listItemSubtitle} numberOfLines={1}>
@@ -560,6 +603,18 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                     style={styles.friendItemTouchable}
                     onPress={() => onNavigateToProfile(item.id)}
                   >
+                    {item.profilePicture ? (
+                      <Image
+                        source={{ uri: item.profilePicture }}
+                        style={styles.listItemAvatar}
+                      />
+                    ) : (
+                      <View style={styles.listItemAvatarPlaceholder}>
+                        <Text style={styles.listItemAvatarText}>
+                          {item.displayName.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
                     <View style={styles.listItemContent}>
                       <Text style={styles.listItemTitle}>{item.displayName}</Text>
                       <Text style={styles.listItemSubtitle}>
@@ -702,7 +757,12 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     }
 
     return (
-      <View style={styles.chatArea}>
+      <KeyboardAvoidingView
+        style={styles.chatArea}
+        enabled={!isWeb && !isTablet}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
         <LinearGradient colors={['#667eea', '#764ba2']} style={styles.chatGradient}>
           {/* Chat Header */}
           <View style={styles.chatHeader}>
@@ -717,6 +777,24 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                 <Text style={styles.backButtonText}>←</Text>
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              disabled={selectedUserId === BOT_USER_ID}
+              onPress={() => selectedUserId && selectedUserId !== BOT_USER_ID && onNavigateToProfile(selectedUserId)}
+              style={styles.chatHeaderAvatar}
+            >
+              {otherUser?.profilePicture ? (
+                <Image
+                  source={{ uri: otherUser.profilePicture }}
+                  style={styles.chatHeaderAvatarImage}
+                />
+              ) : (
+                <View style={styles.chatHeaderAvatarPlaceholder}>
+                  <Text style={styles.chatHeaderAvatarText}>
+                    {(otherUser?.displayName || 'User').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
             <View style={styles.chatHeaderContent}>
               <Text style={styles.chatHeaderTitle}>{otherUser.displayName}</Text>
               <Text style={styles.chatHeaderSubtitle}>
@@ -731,8 +809,11 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
             style={styles.messagesList}
             data={messages}
             keyExtractor={(item) => item.id}
+            onContentSizeChange={() => scrollMessagesToBottom(false)}
+            onLayout={() => scrollMessagesToBottom(false)}
             renderItem={({ item }) => {
               const isOwnMessage = item.fromUserId === currentUser?.uid;
+              const isPendingMessage = item.id.startsWith('offline_');
               const messageTime = item.createdAt instanceof Date 
                 ? item.createdAt 
                 : new Date(item.createdAt || Date.now());
@@ -742,6 +823,25 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                   styles.messageContainer,
                   isOwnMessage ? styles.ownMessage : styles.otherMessage
                 ]}>
+                  {!isOwnMessage && (
+                    <TouchableOpacity
+                      disabled={selectedUserId === BOT_USER_ID}
+                      onPress={() => selectedUserId && selectedUserId !== BOT_USER_ID && onNavigateToProfile(selectedUserId)}
+                    >
+                      {otherUser?.profilePicture ? (
+                        <Image
+                          source={{ uri: otherUser.profilePicture }}
+                          style={styles.messageAvatar}
+                        />
+                      ) : (
+                        <View style={styles.messageAvatarPlaceholder}>
+                          <Text style={styles.messageAvatarText}>
+                            {(otherUser?.displayName || 'User').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  )}
                   <View style={[
                     styles.messageBubble,
                     isOwnMessage ? styles.ownBubble : styles.otherBubble
@@ -761,6 +861,11 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                         minute: '2-digit' 
                       })}
                     </Text>
+                    {isPendingMessage && (
+                      <Text style={[styles.pendingSyncText, isOwnMessage ? styles.ownPendingSyncText : styles.otherPendingSyncText]}>
+                        Pending sync
+                      </Text>
+                    )}
                   </View>
                 </View>
               );
@@ -769,10 +874,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
           />
 
           {/* Message Input */}
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.inputContainer}
-          >
+          <View style={styles.inputContainer}>
             <View style={styles.inputRow}>
               <TextInput
                 style={styles.messageInput}
@@ -791,9 +893,9 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                 <Text style={styles.sendButtonText}>Send</Text>
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
+          </View>
         </LinearGradient>
-      </View>
+      </KeyboardAvoidingView>
     );
   };
 
@@ -966,6 +1068,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  listItemAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  listItemAvatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(102, 126, 234, 0.6)',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  listItemAvatarText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+  },
   listItemContent: {
     flex: 1,
   },
@@ -1067,13 +1189,35 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.2)',
     backgroundColor: 'rgba(255,255,255,0.1)',
+    gap: 12,
   },
   chatBackButton: {
-    marginRight: 12,
     padding: 4,
+  },
+  chatHeaderAvatar: {
+    marginRight: 4,
+  },
+  chatHeaderAvatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  chatHeaderAvatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chatHeaderAvatarText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
   },
   chatHeaderContent: {
     flex: 1,
+    justifyContent: 'center',
   },
   chatHeaderTitle: {
     color: 'white',
@@ -1089,15 +1233,40 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 8,
+    paddingBottom: 80,
   },
   messageContainer: {
     marginVertical: 4,
-  },
-  ownMessage: {
+    flexDirection: 'row',
     alignItems: 'flex-end',
   },
+  ownMessage: {
+    justifyContent: 'flex-end',
+  },
   otherMessage: {
-    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+  },
+  messageAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 8,
+    marginBottom: 2,
+  },
+  messageAvatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginRight: 8,
+    marginBottom: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageAvatarText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
   messageBubble: {
     maxWidth: '80%',
@@ -1130,6 +1299,18 @@ const styles = StyleSheet.create({
   },
   otherMessageTime: {
     color: 'rgba(255,255,255,0.7)',
+  },
+  pendingSyncText: {
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  ownPendingSyncText: {
+    color: 'rgba(0,0,0,0.45)',
+    textAlign: 'right',
+  },
+  otherPendingSyncText: {
+    color: 'rgba(255,255,255,0.75)',
   },
   inputContainer: {
     paddingHorizontal: 16,
@@ -1195,6 +1376,8 @@ const styles = StyleSheet.create({
   },
   friendItemTouchable: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   followButtonSmall: {
     backgroundColor: 'rgba(102, 126, 234, 0.8)',

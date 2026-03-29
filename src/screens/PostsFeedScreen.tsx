@@ -39,6 +39,7 @@ import {
 } from '@/services/postsService';
 import { createReport } from '@/services/reportService';
 import { auth } from '@/services/firebase';
+import { offlineService } from '@/services/offlineService';
 import Navbar from '@/components/Navbar';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -380,20 +381,27 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     setPostsWithUsers(updatePostsWithUsers(postsWithUsers));
     
     try {
-      await likePost(postId);
+      const isOfflineAction = !offlineService.isConnected();
+      if (isOfflineAction) {
+        await offlineService.likePost(postId, currentUser.uid);
+      } else {
+        await likePost(postId);
+      }
 
       // Sync from server to avoid stale counters until manual refresh.
-      const postDoc = await getDoc(doc(db, 'posts', postId));
-      if (postDoc.exists()) {
-        const serverPost = { id: postDoc.id, ...postDoc.data() } as Post;
-        const normalizedServerPost: Post = {
-          ...serverPost,
-          createdAt: (postDoc.data().createdAt as any)?.toDate?.() || serverPost.createdAt,
-          updatedAt: (postDoc.data().updatedAt as any)?.toDate?.() || serverPost.updatedAt,
-        };
+      if (!isOfflineAction) {
+        const postDoc = await getDoc(doc(db, 'posts', postId));
+        if (postDoc.exists()) {
+          const serverPost = { id: postDoc.id, ...postDoc.data() } as Post;
+          const normalizedServerPost: Post = {
+            ...serverPost,
+            createdAt: (postDoc.data().createdAt as any)?.toDate?.() || serverPost.createdAt,
+            updatedAt: (postDoc.data().updatedAt as any)?.toDate?.() || serverPost.updatedAt,
+          };
 
-        setPosts(prev => prev.map(post => (post.id === postId ? { ...post, ...normalizedServerPost } : post)));
-        setPostsWithUsers(prev => prev.map(post => (post.id === postId ? { ...post, ...normalizedServerPost } : post)));
+          setPosts(prev => prev.map(post => (post.id === postId ? { ...post, ...normalizedServerPost } : post)));
+          setPostsWithUsers(prev => prev.map(post => (post.id === postId ? { ...post, ...normalizedServerPost } : post)));
+        }
       }
     } catch (error: any) {
       // Revert to previous state on error
@@ -593,17 +601,50 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   };
 
   const handleAddComment = async () => {
-    if (!commentText.trim() || !selectedPost) return;
+    if (!commentText.trim() || !selectedPost || !currentUser) return;
 
     setLoadingComment(true);
     try {
       if (replyingTo) {
         // Adding a reply to a comment
-        await addReply(replyingTo.id, commentText.trim());
+        if (offlineService.isConnected()) {
+          await addReply(replyingTo.id, commentText.trim());
+        } else {
+          const offlineReply = await offlineService.createReply(replyingTo.id, currentUser.uid, commentText.trim());
+
+          if (currentUserData) {
+            setRepliesWithUsers((prev) => {
+              const existing = prev[replyingTo.id] || [];
+              return {
+                ...prev,
+                [replyingTo.id]: [...existing, { ...offlineReply, user: currentUserData }],
+              };
+            });
+          }
+
+          setPostComments((prev) =>
+            prev.map((comment) =>
+              comment.id === replyingTo.id
+                ? { ...comment, repliesCount: (comment.repliesCount || 0) + 1 }
+                : comment
+            )
+          );
+          setCommentsWithUsers((prev) =>
+            prev.map((comment) =>
+              comment.id === replyingTo.id
+                ? { ...comment, repliesCount: (comment.repliesCount || 0) + 1 }
+                : comment
+            )
+          );
+        }
         setReplyingTo(null);
       } else {
         // Adding a comment to the post
-        await addComment(selectedPost.id, commentText.trim());
+        if (offlineService.isConnected()) {
+          await addComment(selectedPost.id, commentText.trim());
+        } else {
+          await offlineService.createComment(selectedPost.id, currentUser.uid, commentText.trim());
+        }
         
         // Update the comment count in local state
         setPosts(posts => posts.map(post => 
@@ -949,6 +990,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
 
   const renderReply = (reply: Reply & { user: User }) => {
     const isLiked = reply.likedBy.includes(currentUser?.uid || '');
+    const isPendingReply = reply.id.startsWith('offline_reply_');
     
     return (
       <View key={reply.id} style={styles.replyContainer}>
@@ -962,6 +1004,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
           <View style={styles.commentHeader}>
             <Text style={styles.commentUsername}>{reply.user.displayName}</Text>
             <Text style={styles.commentTime}>{formatTime(reply.createdAt)}</Text>
+            {isPendingReply && <Text style={styles.pendingSyncCommentText}> • Pending sync</Text>}
           </View>
           <Text style={styles.commentText}>{reply.text}</Text>
           <View style={styles.commentActions}>
@@ -1614,6 +1657,11 @@ const styles = StyleSheet.create({
   commentTime: {
     color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 12,
+  },
+  pendingSyncCommentText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   commentText: {
     color: 'white',

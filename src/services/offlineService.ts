@@ -3,6 +3,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { 
   Post, 
   Comment, 
+  Reply,
   User, 
   Notification, 
   OfflineAction, 
@@ -12,6 +13,7 @@ import {
 import { 
   createPost as firebaseCreatePost, 
   addComment as firebaseCreateComment,
+  addReply as firebaseAddReply,
   likePost as firebaseLikePost,
   getPosts as firebaseGetPosts,
   getUserData as firebaseGetUser
@@ -277,6 +279,47 @@ class OfflineService {
     return offlineComment;
   }
 
+  public async createReply(commentId: string, userId: string, text: string): Promise<Reply> {
+    if (this.isOnline) {
+      try {
+        await firebaseAddReply(commentId, text);
+        return {
+          id: `reply_${Date.now()}`,
+          commentId,
+          userId,
+          text,
+          likes: 0,
+          likedBy: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      } catch (error) {
+        console.error('Error creating reply online:', error);
+      }
+    }
+
+    const offlineReply: Reply = {
+      id: `offline_reply_${Date.now()}`,
+      commentId,
+      userId,
+      text,
+      likes: 0,
+      likedBy: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    await this.addOfflineAction({
+      id: `create_reply_${Date.now()}`,
+      type: 'CREATE_REPLY',
+      userId,
+      data: { commentId, text },
+      timestamp: Date.now(),
+    });
+
+    return offlineReply;
+  }
+
   /**
    * Send a direct message with offline support
    */
@@ -469,6 +512,10 @@ class OfflineService {
         await firebaseCreateComment(action.data.postId, action.data.text);
         break;
 
+      case 'CREATE_REPLY':
+        await firebaseAddReply(action.data.commentId, action.data.text);
+        break;
+
       case 'SEND_MESSAGE':
         const { sendDirectMessage: firebaseSendMessage } = await import('./friendsService');
         await firebaseSendMessage(action.data.toUserId, action.data.message);
@@ -516,6 +563,8 @@ export const likePost = (postId: string, userId: string): Promise<void> =>
   offlineService.likePost(postId, userId);
 export const createComment = (postId: string, userId: string, text: string): Promise<Comment> => 
   offlineService.createComment(postId, userId, text);
+export const createReply = (commentId: string, userId: string, text: string): Promise<Reply> =>
+  offlineService.createReply(commentId, userId, text);
 export const getUser = (userId: string): Promise<User | null> => offlineService.getUser(userId);
 export const syncOfflineActions = (): Promise<void> => offlineService.syncOfflineActions();
 export const getSyncStatus = (): Promise<SyncStatus> => offlineService.getSyncStatus();

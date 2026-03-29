@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { User } from '@/types';
 
 // Initialize Gemini AI
-const GEMINI_API_KEY = 'AIzaSyBKp6WjndEx1ARYFFBm1ojZYKq31tvM_5U';
+const GEMINI_API_KEY = 'AIzaSyCuPDeaGRjFZYLfTrIDF5ZgnowtbBG3bhA';
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // Bot user ID constant

@@ -43,3 +43,5 @@ yarn-error.*
 # Firebase
 firebase-debug.log
 /firebase.ts
+chatbotService.ts
+

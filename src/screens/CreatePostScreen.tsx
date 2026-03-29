@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { createPost, getTrendingTags, searchTags, getUserDataWithCounts } from '@/services/postsService';
 import { Tag, User } from '@/types';
 import { auth } from '@/services/firebase';
+import { offlineService } from '@/services/offlineService';
 import Navbar from '@/components/Navbar';
 import { FIRESTORE_IMAGE_LIMITS, prepareImageForPost } from '@/utils/imageUtils';
 import { PostImage } from '@/types';
@@ -179,6 +180,11 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
   };
 
   const handleCreatePost = async () => {
+    if (!currentUser) {
+      Alert.alert('Error', 'Not authenticated');
+      return;
+    }
+
     if (!content.trim() && images.length === 0) {
       Alert.alert('Empty Post', 'Please add some content or images to your post.');
       return;
@@ -217,8 +223,19 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
         return;
       }
 
-      await createPost(content.trim(), tags, processedImages);
-      Alert.alert('Success', 'Post created successfully!');
+      if (offlineService.isConnected()) {
+        await createPost(content.trim(), tags, processedImages);
+        Alert.alert('Success', 'Post created successfully!');
+      } else {
+        await offlineService.createPost(
+          currentUser.uid,
+          content.trim(),
+          tags,
+          processedImages.map((image) => image.data)
+        );
+        Alert.alert('Queued', 'Post saved offline and will sync when internet is back.');
+      }
+
       onPostCreated(); // Navigate immediately after post is created
     } catch (error: any) {
       console.error('Error creating post:', error);
