@@ -15,6 +15,7 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { FirebaseError } from 'firebase/app';
 import { 
   User, 
   FriendRequest, 
@@ -42,14 +43,37 @@ export const sendFriendRequest = async (toUserId: string): Promise<void> => {
   try {
     // Check if both users exist
     console.log('Checking if users exist...');
-    const [currentUserDoc, targetUserDoc] = await Promise.all([
+    let [currentUserDoc, targetUserDoc] = await Promise.all([
       getDoc(doc(db, 'users', currentUser.uid)),
       getDoc(doc(db, 'users', toUserId))
     ]);
 
     if (!currentUserDoc.exists()) {
-      console.error('Current user document not found');
-      throw new Error('Current user document not found');
+      console.warn('Current user document missing, creating a minimal profile document...');
+      await setDoc(
+        doc(db, 'users', currentUser.uid),
+        {
+          displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
+          email: currentUser.email || '',
+          friends: [],
+          following: [],
+          followers: [],
+          achievements: [],
+          badges: [],
+          xp: 0,
+          level: 1,
+          totalPosts: 0,
+          totalLikes: 0,
+          totalComments: 0,
+          totalFollowers: 0,
+          totalFollowing: 0,
+          totalFriends: 0,
+          createdAt: new Date(),
+          lastActive: new Date(),
+        },
+        { merge: true }
+      );
+      currentUserDoc = await getDoc(doc(db, 'users', currentUser.uid));
     }
     
     if (!targetUserDoc.exists()) {
@@ -100,6 +124,17 @@ export const sendFriendRequest = async (toUserId: string): Promise<void> => {
     
   } catch (error: any) {
     console.error('Error in sendFriendRequest:', error);
+    if (error instanceof FirebaseError) {
+      if (error.code === 'permission-denied') {
+        throw new Error('Permission denied while sending request. Please redeploy Firestore rules and try again.');
+      }
+      if (error.code === 'unavailable') {
+        throw new Error('Network unavailable. Please check your connection and try again.');
+      }
+      if (error.code === 'failed-precondition' && (error.message || '').toLowerCase().includes('index')) {
+        throw new Error('Firestore index required for friend requests. Open Firebase console and create the suggested index.');
+      }
+    }
     throw new Error(error.message || 'Failed to send friend request');
   }
 };

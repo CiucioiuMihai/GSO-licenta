@@ -27,9 +27,9 @@ const Navbar: React.FC<NavbarProps> = ({
   const navItems = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'explore', label: 'Messages', icon: '💬' },
+    { id: 'posts', label: 'Posts', icon: '📰' },
     { id: 'create', label: 'Create', icon: '➕' },
-    { id: 'leaderboard', label: 'Ranking', icon: '🥇' },
-    { id: 'achievements', label: 'Achievements', icon: '🏆' },
+    { id: 'leaderboard', label: 'Progress', icon: '🏆' },
     { id: 'profile', label: 'Profile', icon: '👤' },
   ];
 

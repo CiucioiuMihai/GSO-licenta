@@ -215,12 +215,12 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     setNavbarTab(tab);
     if (tab === 'explore') {
       onNavigateToFriends();
+    } else if (tab === 'posts') {
+      onNavigateToPostsFeed();
     } else if (tab === 'home') {
       onNavigateToHome();
     } else if (tab === 'create') {
       onNavigateToCreatePost();
-    } else if (tab === 'achievements') {
-      onNavigateToAchievements();
     } else if (tab === 'profile') {
       // Already on profile screen
     } else if (tab === 'leaderboard') {

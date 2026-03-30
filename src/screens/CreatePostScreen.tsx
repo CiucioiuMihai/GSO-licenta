@@ -267,12 +267,12 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
     setNavbarTab(tab);
     if (tab === 'explore') {
       onNavigateToFriends();
+    } else if (tab === 'posts') {
+      onNavigateToPostsFeed();
     } else if (tab === 'home') {
       onNavigateToHome();
     } else if (tab === 'create') {
       // Already on create post screen
-    } else if (tab === 'achievements') {
-      onNavigateToAchievements();
     } else if (tab === 'profile') {
       onNavigateToProfile();
     } else if (tab === 'leaderboard') {

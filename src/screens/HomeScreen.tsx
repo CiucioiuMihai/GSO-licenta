@@ -185,15 +185,14 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
     if (tab === 'explore') {
       // Navigate to friends when explore is pressed for now
       onNavigateToFriends();
+    } else if (tab === 'posts') {
+      onNavigateToPostsFeed();
     } else if (tab === 'home') {
       // Refresh data when user returns to home tab
       onRefresh();
     } else if (tab === 'create') {
       // Navigate to create post
       onNavigateToCreatePost();
-    } else if (tab === 'achievements') {
-      // Navigate to achievements
-      onNavigateToAchievements();
     } else if (tab === 'profile') {
       // Navigate to profile
       onNavigateToProfile();

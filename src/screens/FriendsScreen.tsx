@@ -419,12 +419,12 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({
     setNavbarTab(tab);
     if (tab === 'explore') {
       // Already on friends/messages screen
+    } else if (tab === 'posts') {
+      onNavigateToPostsFeed();
     } else if (tab === 'home') {
       onNavigateToHome();
     } else if (tab === 'create') {
       onNavigateToCreatePost();
-    } else if (tab === 'achievements') {
-      onNavigateToAchievements();
     } else if (tab === 'profile') {
       onNavigateToProfile();
     } else if (tab === 'leaderboard') {

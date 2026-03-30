@@ -15,7 +15,7 @@ import {
   Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { User, FriendRequest, Conversation, DirectMessage } from '@/types';
 import { 
   getUserFriends, 
@@ -65,6 +65,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   onNavigateToProfile,
   onNavigateToLeaderboard,
 }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('conversations');
   const [navbarTab, setNavbarTab] = useState('explore');
   const [friends, setFriends] = useState<User[]>([]);
@@ -84,6 +85,10 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
+  const mobileContentBottomSpacing = !isWeb && !isTablet ? 100 : 0;
+  const chatBottomInset = !isWeb && !isTablet && Platform.OS === 'android'
+    ? Math.max(insets.bottom, 2)
+    : insets.bottom;
 
   const scrollMessagesToBottom = (animated: boolean = true) => {
     // Multiple attempts handle async layout/measurement timing on mobile.
@@ -359,12 +364,17 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   };
 
   const handleSendFriendRequest = async (userId: string) => {
+    if (friends.some(friend => friend.id === userId)) {
+      Alert.alert('Already friends', 'You are already friends with this user.');
+      return;
+    }
+
     try {
       await sendFriendRequest(userId);
       Alert.alert('Success', 'Friend request sent!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending friend request:', error);
-      Alert.alert('Error', 'Failed to send friend request');
+      Alert.alert('Error', error?.message || 'Failed to send friend request');
     }
   };
 
@@ -462,12 +472,12 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     setNavbarTab(tab);
     if (tab === 'explore') {
       // Already on messages screen
+    } else if (tab === 'posts') {
+      onNavigateToPostsFeed();
     } else if (tab === 'home') {
       onNavigateToHome();
     } else if (tab === 'create') {
       onNavigateToCreatePost();
-    } else if (tab === 'achievements') {
-      onNavigateToAchievements();
     } else if (tab === 'profile') {
       onNavigateToProfile();
     } else if (tab === 'leaderboard') {
@@ -476,7 +486,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   };
 
   const renderLeftSidebar = () => (
-    <View style={styles.sidebar}>
+    <View style={[styles.sidebar, (isWeb || isTablet) && styles.sidebarWeb]}>
       <LinearGradient colors={['#667eea', '#764ba2']} style={styles.sidebarGradient}>
         {/* Header */}
         <View style={styles.sidebarHeader}>
@@ -528,7 +538,11 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
         {/* Content List */}
         <FlatList
           style={styles.sidebarList}
-          contentContainerStyle={styles.sidebarListContent}
+          contentContainerStyle={[
+            styles.sidebarListContent,
+            !isWeb && !isTablet && styles.sidebarListContentMobile,
+            !isWeb && !isTablet && { paddingBottom: 16 + mobileContentBottomSpacing },
+          ]}
           showsVerticalScrollIndicator={false}
           data={
             activeTab === 'conversations' ? conversations :
@@ -687,6 +701,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 
             // Search results
             const userIsFollowed = isFollowing(item.id);
+            const userIsFriend = friends.some(friend => friend.id === item.id);
             
             return (
               <View style={styles.searchResultItem}>
@@ -707,10 +722,13 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.addFriendButton}
+                    style={[styles.addFriendButton, userIsFriend && styles.addFriendButtonDisabled]}
                     onPress={() => handleSendFriendRequest(item.id)}
+                    disabled={userIsFriend}
                   >
-                    <Text style={styles.addFriendText}>Add</Text>
+                    <Text style={[styles.addFriendText, userIsFriend && styles.addFriendTextDisabled]}>
+                      {userIsFriend ? 'Friends' : 'Add'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -728,16 +746,6 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
           }
         />
         
-        {/* Navbar - Only show on mobile */}
-        {!isWeb && !isTablet && (
-          <Navbar
-            activeTab={navbarTab}
-            onTabPress={handleNavbarTabPress}
-            user={currentUserData}
-            mobileBottomOffset={0}
-            mobileBackgroundHeight={50}
-          />
-        )}
       </LinearGradient>
     </View>
   );
@@ -874,12 +882,19 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
           />
 
           {/* Message Input */}
-          <View style={styles.inputContainer}>
+          <View
+            style={[
+              styles.inputContainer,
+              !isWeb && !isTablet && { paddingBottom: 2 + chatBottomInset },
+            ]}
+          >
             <View style={styles.inputRow}>
               <TextInput
                 style={styles.messageInput}
                 placeholder="Type a message..."
                 placeholderTextColor="rgba(0,0,0,0.5)"
+                cursorColor="#2ecc71"
+                selectionColor="#2ecc71"
                 value={newMessage}
                 onChangeText={setNewMessage}
                 multiline
@@ -913,11 +928,18 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 
   // For mobile: full-screen list or chat based on selection
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {!selectedConversation ? (
         <>{renderLeftSidebar()}</>
       ) : (
         <>{renderChatArea()}</>
+      )}
+      {!isWeb && !isTablet && !selectedConversation && (
+        <Navbar
+          activeTab={navbarTab}
+          onTabPress={handleNavbarTabPress}
+          user={currentUserData}
+        />
       )}
     </SafeAreaView>
   );
@@ -934,6 +956,9 @@ const styles = StyleSheet.create({
   },
   sidebar: {
     flex: 1,
+    width: '100%',
+  },
+  sidebarWeb: {
     width: isWeb ? Math.max(screenWidth * 0.33, 320) : isTablet ? 300 : '100%',
     minWidth: isWeb || isTablet ? 280 : 0,
     maxWidth: isWeb || isTablet ? 400 : '100%',
@@ -1022,6 +1047,9 @@ const styles = StyleSheet.create({
   },
   sidebarListContent: {
     paddingBottom: 80,
+  },
+  sidebarListContentMobile: {
+    paddingBottom: 140,
   },
   listItem: {
     flexDirection: 'row',
@@ -1148,6 +1176,9 @@ const styles = StyleSheet.create({
     color: '#FFD700',
     fontSize: 14,
     fontWeight: '600',
+  },
+  addFriendTextDisabled: {
+    color: 'rgba(255,255,255,0.95)',
   },
   emptyContainer: {
     padding: 20,
@@ -1324,6 +1355,7 @@ const styles = StyleSheet.create({
   messageInput: {
     flex: 1,
     backgroundColor: 'white',
+    color: '#1f1f1f',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -1448,6 +1480,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
+  },
+  addFriendButtonDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
 });
 

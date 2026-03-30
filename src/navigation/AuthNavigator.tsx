@@ -9,13 +9,12 @@ import HomeScreen from '../screens/HomeScreen';
 import CombinedMessagesScreen from '../screens/CombinedMessagesScreen';
 import PostsFeedScreen from '../screens/PostsFeedScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
-import AchievementsScreen from '../screens/AchievementsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import AdminScreen from '../screens/AdminScreen';
 import LeaderboardScreen from '../screens/LeaderboardScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
-type Screen = 'login' | 'register' | 'home' | 'combined-messages' | 'posts-feed' | 'create-post' | 'achievements' | 'profile' | 'admin' | 'leaderboard';
+type Screen = 'login' | 'register' | 'home' | 'combined-messages' | 'posts-feed' | 'create-post' | 'profile' | 'admin' | 'leaderboard';
 
 const AuthNavigator: React.FC = () => {
   const [authState, setAuthState] = useState<AuthState>('loading');
@@ -134,7 +133,7 @@ const AuthNavigator: React.FC = () => {
   };
 
   const handleNavigateToAchievements = () => {
-    navigateTo('achievements');
+    navigateTo('leaderboard');
   };
 
   const handleNavigateToProfile = (userId?: string) => {
@@ -151,10 +150,6 @@ const AuthNavigator: React.FC = () => {
   };
 
   const handleBackFromFriends = () => {
-    goBack();
-  };
-
-  const handleBackFromAchievements = () => {
     goBack();
   };
 
@@ -226,20 +221,6 @@ const AuthNavigator: React.FC = () => {
           <CreatePostScreen
             onBack={handleBackFromPosts}
             onPostCreated={handlePostCreated}
-            onNavigateToHome={handleNavigateToHome}
-            onNavigateToFriends={handleNavigateToFriends}
-            onNavigateToPostsFeed={handleNavigateToPostsFeed}
-            onNavigateToCreatePost={handleNavigateToCreatePost}
-            onNavigateToAchievements={handleNavigateToAchievements}
-            onNavigateToProfile={handleNavigateToProfile}
-            onNavigateToLeaderboard={handleNavigateToLeaderboard}
-          />
-        );
-      case 'achievements':
-        return (
-          <AchievementsScreen
-            user={user}
-            onBack={handleBackFromAchievements}
             onNavigateToHome={handleNavigateToHome}
             onNavigateToFriends={handleNavigateToFriends}
             onNavigateToPostsFeed={handleNavigateToPostsFeed}
