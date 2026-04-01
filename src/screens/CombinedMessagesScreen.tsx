@@ -34,7 +34,7 @@ import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/post
 import { offlineService } from '@/services/offlineService';
 import { BOT_USER_ID, BOT_USER, isBotMessage } from '@/services/chatbotService';
 import { setActiveConversationForNotifications } from '@/services/notificationService';
-import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, orderBy, limit, startAfter, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '@/services/firebase';
 import Navbar from '@/components/Navbar';
 
@@ -54,6 +54,7 @@ type TabType = 'conversations' | 'friends' | 'requests' | 'search';
 const { width: screenWidth } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
 const isTablet = screenWidth > 768;
+const MESSAGES_BATCH_SIZE = 20;
 
 const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ 
   onBack,
@@ -81,14 +82,14 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [lastVisibleMessageDoc, setLastVisibleMessageDoc] = useState<any>(null);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
   const mobileContentBottomSpacing = !isWeb && !isTablet ? 100 : 0;
-  const chatBottomInset = !isWeb && !isTablet && Platform.OS === 'android'
-    ? Math.max(insets.bottom, 2)
-    : insets.bottom;
 
   const scrollMessagesToBottom = (animated: boolean = true) => {
     // Multiple attempts handle async layout/measurement timing on mobile.
@@ -158,15 +159,50 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     loadFriendRequestUsers();
   }, [friendRequests]);
 
-  // Chat message listener
+  // Chat message listener (latest batch + realtime updates)
   useEffect(() => {
     if (!selectedConversation) return;
 
+    setMessages([]);
+    setLastVisibleMessageDoc(null);
+    setHasMoreMessages(true);
+    setIsLoadingMoreMessages(false);
+
     setActiveConversationForNotifications(selectedConversation);
 
-    const unsubscribe = getConversationMessages(selectedConversation, (newMessages) => {
-      setMessages(newMessages);
-      scrollMessagesToBottom(true);
+    const messagesQuery = query(
+      collection(db, 'directMessages'),
+      where('conversationId', '==', selectedConversation),
+      orderBy('createdAt', 'desc'),
+      limit(MESSAGES_BATCH_SIZE)
+    );
+
+    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+      const newestBatch = snapshot.docs.map((messageDoc) => ({
+        id: messageDoc.id,
+        ...messageDoc.data(),
+        createdAt: messageDoc.data().createdAt?.toDate() || new Date(),
+      })) as DirectMessage[];
+
+      const newestIds = new Set(newestBatch.map((msg) => msg.id));
+
+      setMessages((prevMessages) => {
+        const olderLoadedMessages = prevMessages.filter((msg) => !newestIds.has(msg.id));
+        const merged = [...olderLoadedMessages, ...newestBatch];
+        merged.sort((a, b) => {
+          const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt || 0).getTime();
+          const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt || 0).getTime();
+          return aTime - bTime;
+        });
+        return merged;
+      });
+
+      if (!lastVisibleMessageDoc) {
+        setLastVisibleMessageDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+        setHasMoreMessages(snapshot.docs.length === MESSAGES_BATCH_SIZE);
+      }
+
+      requestAnimationFrame(() => scrollMessagesToBottom(false));
     });
 
     markMessagesAsRead(selectedConversation).catch(console.error);
@@ -176,10 +212,56 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     };
   }, [selectedConversation]);
 
-  useEffect(() => {
-    if (!selectedConversation) return;
-    scrollMessagesToBottom(false);
-  }, [selectedConversation, messages.length]);
+  const loadMoreMessages = async () => {
+    if (!selectedConversation || isLoadingMoreMessages || !hasMoreMessages || !lastVisibleMessageDoc) {
+      return;
+    }
+
+    setIsLoadingMoreMessages(true);
+    try {
+      const olderMessagesQuery = query(
+        collection(db, 'directMessages'),
+        where('conversationId', '==', selectedConversation),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastVisibleMessageDoc),
+        limit(MESSAGES_BATCH_SIZE)
+      );
+
+      const snapshot = await getDocs(olderMessagesQuery);
+      const olderMessages = snapshot.docs.map((messageDoc) => ({
+        id: messageDoc.id,
+        ...messageDoc.data(),
+        createdAt: messageDoc.data().createdAt?.toDate() || new Date(),
+      })) as DirectMessage[];
+
+      if (olderMessages.length > 0) {
+        setMessages((prevMessages) => {
+          const existingIds = new Set(prevMessages.map((msg) => msg.id));
+          const uniqueOlder = olderMessages.filter((msg) => !existingIds.has(msg.id));
+          const merged = [...prevMessages, ...uniqueOlder];
+          merged.sort((a, b) => {
+            const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt || 0).getTime();
+            const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt || 0).getTime();
+            return aTime - bTime;
+          });
+          return merged;
+        });
+      }
+
+      setLastVisibleMessageDoc(snapshot.docs[snapshot.docs.length - 1] || lastVisibleMessageDoc);
+      setHasMoreMessages(snapshot.docs.length === MESSAGES_BATCH_SIZE);
+    } catch (error) {
+      console.error('Error loading more messages:', error);
+    } finally {
+      setIsLoadingMoreMessages(false);
+    }
+  };
+
+  const handleMessagesScroll = (event: any) => {
+    if (event?.nativeEvent?.contentOffset?.y <= 160) {
+      loadMoreMessages();
+    }
+  };
 
   useEffect(() => {
     if (Platform.OS !== 'android' || isWeb || isTablet) {
@@ -768,8 +850,8 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
       <KeyboardAvoidingView
         style={styles.chatArea}
         enabled={!isWeb && !isTablet}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
       >
         <LinearGradient colors={['#667eea', '#764ba2']} style={styles.chatGradient}>
           {/* Chat Header */}
@@ -819,6 +901,8 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
             keyExtractor={(item) => item.id}
             onContentSizeChange={() => scrollMessagesToBottom(false)}
             onLayout={() => scrollMessagesToBottom(false)}
+            onScroll={handleMessagesScroll}
+            scrollEventThrottle={16}
             renderItem={({ item }) => {
               const isOwnMessage = item.fromUserId === currentUser?.uid;
               const isPendingMessage = item.id.startsWith('offline_');
@@ -879,15 +963,21 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
               );
             }}
             showsVerticalScrollIndicator={false}
+            ListHeaderComponent={
+              isLoadingMoreMessages ? (
+                <View style={styles.loadingMoreMessagesContainer}>
+                  <Text style={styles.loadingMoreMessagesText}>Loading older messages...</Text>
+                </View>
+              ) : !hasMoreMessages && messages.length > 0 ? (
+                <View style={styles.loadingMoreMessagesContainer}>
+                  <Text style={styles.loadingMoreMessagesText}>Beginning of conversation</Text>
+                </View>
+              ) : null
+            }
           />
 
           {/* Message Input */}
-          <View
-            style={[
-              styles.inputContainer,
-              !isWeb && !isTablet && { paddingBottom: 2 + chatBottomInset },
-            ]}
-          >
+          <View style={styles.inputContainer}>
             <View style={styles.inputRow}>
               <TextInput
                 style={styles.messageInput}
@@ -928,18 +1018,20 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 
   // For mobile: full-screen list or chat based on selection
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {!selectedConversation ? (
-        <>{renderLeftSidebar()}</>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {selectedConversation ? (
+        renderChatArea()
       ) : (
-        <>{renderChatArea()}</>
-      )}
-      {!isWeb && !isTablet && !selectedConversation && (
-        <Navbar
-          activeTab={navbarTab}
-          onTabPress={handleNavbarTabPress}
-          user={currentUserData}
-        />
+        <>
+          {renderLeftSidebar()}
+          {!isWeb && !isTablet && (
+            <Navbar
+              activeTab={navbarTab}
+              onTabPress={handleNavbarTabPress}
+              user={currentUserData}
+            />
+          )}
+        </>
       )}
     </SafeAreaView>
   );
@@ -948,7 +1040,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#667eea',
+    backgroundColor: '#764ba2',
   },
   webLayout: {
     flex: 1,
@@ -1342,6 +1434,15 @@ const styles = StyleSheet.create({
   },
   otherPendingSyncText: {
     color: 'rgba(255,255,255,0.75)',
+  },
+  loadingMoreMessagesContainer: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  loadingMoreMessagesText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontWeight: '600',
   },
   inputContainer: {
     paddingHorizontal: 16,

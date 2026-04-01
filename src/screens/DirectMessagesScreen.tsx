@@ -264,8 +264,8 @@ const DirectMessagesScreen: React.FC<DirectMessagesScreenProps> = ({
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           style={styles.keyboardAvoid}
-          behavior='padding'
-          keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'android' ? 30 : 0}
         >
           {/* Header */}
           <View style={styles.header}>
