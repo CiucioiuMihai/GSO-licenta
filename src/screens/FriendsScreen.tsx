@@ -994,6 +994,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  unfriendButtonSmall: {
+    backgroundColor: 'rgba(244, 67, 54, 0.9)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unfriendButtonTextSmall: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    lineHeight: 18,
+  },
   followButtonSmall: {
     backgroundColor: 'rgba(102, 126, 234, 0.9)',
     width: 36,
