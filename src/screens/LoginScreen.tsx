@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/services/firebase';
+import { resetPassword } from '@/services/auth';
 
 interface LoginScreenProps {
   onNavigateToRegister: () => void;
@@ -28,6 +29,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -44,6 +47,27 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
       Alert.alert('Error', error.message || 'Login failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert('Email required', 'Enter your email first, then tap Forgot password.');
+      return;
+    }
+
+    setSendingReset(true);
+    try {
+      const result = await resetPassword(email.trim());
+      if (result.success) {
+        Alert.alert('Reset email sent', 'Check your inbox for password reset instructions.');
+      } else {
+        Alert.alert('Error', result.error || 'Failed to send reset email.');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to send reset email.');
+    } finally {
+      setSendingReset(false);
     }
   };
 
@@ -84,16 +108,33 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
 
                 <View style={styles.inputContainer}>
                   <Text style={styles.label}>Password</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your password"
-                    placeholderTextColor="rgba(255, 255, 255, 0.6)"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
+                  <View style={styles.passwordRow}>
+                    <TextInput
+                      style={[styles.input, styles.passwordInput]}
+                      placeholder="Enter your password"
+                      placeholderTextColor="rgba(255, 255, 255, 0.6)"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    <TouchableOpacity
+                      style={styles.eyeButton}
+                      onPress={() => setShowPassword((prev) => !prev)}
+                    >
+                      <Text style={styles.eyeButtonText}>{showPassword ? '🙈' : '👁️'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.forgotPasswordButton}
+                    onPress={handleResetPassword}
+                    disabled={sendingReset}
+                  >
+                    <Text style={styles.forgotPasswordText}>
+                      {sendingReset ? 'Sending reset email...' : 'Forgot password?'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity
@@ -190,6 +231,36 @@ const styles = StyleSheet.create({
     color: '#fff',
     borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    paddingRight: 50,
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 12,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  eyeButtonText: {
+    fontSize: 18,
+  },
+  forgotPasswordButton: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+  },
+  forgotPasswordText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+    opacity: 0.95,
   },
   button: {
     backgroundColor: '#fff',

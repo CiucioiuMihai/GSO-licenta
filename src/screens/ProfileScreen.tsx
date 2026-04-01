@@ -23,6 +23,7 @@ import { updateUserProfile } from '@/services/firestore';
 import { getUserDataWithCounts, followUser, unfollowUser } from '@/services/postsService';
 import { getUserPosts } from '@/services/postsService';
 import { sendFriendRequest } from '@/services/friendsService';
+import { signOut as appSignOut } from '@/services/auth';
 import { createReport } from '@/services/reportService';
 import { User, Post } from '@/types';
 import { calculateLevel } from '@/utils/gamification';
@@ -73,6 +74,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [sendingFriendRequest, setSendingFriendRequest] = useState(false);
   const [friendRequestSent, setFriendRequestSent] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [selectedReportReason, setSelectedReportReason] = useState('');
   const currentUser = auth.currentUser;
@@ -282,6 +284,38 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     setTempBio(userData?.bio || '');
     setTempProfilePicture(userData?.profilePicture || '');
     setEditMode(false);
+  };
+
+  const performLogout = async () => {
+    setLoggingOut(true);
+    try {
+      const result = await appSignOut();
+      if (!result.success) {
+        Alert.alert('Error', result.error || 'Failed to log out');
+      }
+      // On success, AuthNavigator listens to auth state and routes to login.
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to log out');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (!isOwnProfile || loggingOut) return;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const confirmed = window.confirm('Log out from your account?');
+      if (confirmed) {
+        void performLogout();
+      }
+      return;
+    }
+
+    Alert.alert('Log out', 'Log out from your account?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => { void performLogout(); } },
+    ]);
   };
 
   const formatTime = (date: any) => {
@@ -568,6 +602,18 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 onPress={handleCancelEdit}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+
+            {isOwnProfile && (
+              <TouchableOpacity
+                style={styles.logoutActionButton}
+                onPress={handleLogout}
+                disabled={loggingOut}
+              >
+                <Text style={styles.logoutActionButtonText}>
+                  {loggingOut ? 'Logging out...' : 'Log Out'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -984,6 +1030,21 @@ const styles = StyleSheet.create({
     color: '#e74c3c',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  logoutActionButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(220, 53, 69, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(220, 53, 69, 0.45)',
+  },
+  logoutActionButtonText: {
+    color: '#b22222',
+    fontWeight: '700',
+    textAlign: 'center',
+    fontSize: 13,
   },
   postsSection: {
     margin: 15,

@@ -146,27 +146,42 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
 
   const pickImage = async () => {
     try {
+      const remainingSlots = Math.max(0, 4 - images.length);
+      if (remainingSlots === 0) {
+        Alert.alert('Limit Reached', 'You can only add up to 4 images per post.');
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsMultipleSelection: true,
+        selectionLimit: remainingSlots,
+        allowsEditing: false,
         aspect: [1, 1],
         quality: 0.8,
-        base64: true, // Request base64 data
       });
 
-      if (!result.canceled && result.assets && result.assets[0]) {
-        const asset = result.assets[0];
-        if (images.length < 4) {
-          const adaptiveLimits = getAdaptiveImageLimits(images.length + 1);
-          const postImage = await prepareImageForPost({
-            uri: asset.uri,
-            width: asset.width,
-            height: asset.height,
-          }, adaptiveLimits);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const assetsToProcess = result.assets.slice(0, remainingSlots);
+        const adaptiveLimits = getAdaptiveImageLimits(images.length + assetsToProcess.length);
 
-          setImages([...images, postImage]);
-        } else {
-          Alert.alert('Limit Reached', 'You can only add up to 4 images per post.');
+        const processedImages = await Promise.all(
+          assetsToProcess.map((asset) =>
+            prepareImageForPost(
+              {
+                uri: asset.uri,
+                width: asset.width,
+                height: asset.height,
+              },
+              adaptiveLimits
+            )
+          )
+        );
+
+        setImages((prevImages) => [...prevImages, ...processedImages].slice(0, 4));
+
+        if (result.assets.length > remainingSlots) {
+          Alert.alert('Limit Reached', `Only ${remainingSlots} more image(s) were added (max 4 total).`);
         }
       }
     } catch (error) {
