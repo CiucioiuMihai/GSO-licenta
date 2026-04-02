@@ -60,6 +60,7 @@ const { width } = Dimensions.get('window');
 
 type FilterType = 'all' | 'following' | 'friends' | 'tag';
 const MAX_FEED_POSTS = 20;
+const PAGE_SIZE = 8;
 
 const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ 
   onCreatePost, 
@@ -105,6 +106,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [selectedReportCategory, setSelectedReportCategory] = useState('');
   const [customReportReason, setCustomReportReason] = useState('');
   const currentUser = auth.currentUser;
+  const feedViewportHeightRef = useRef(0);
+  const feedContentHeightRef = useRef(0);
 
   const capHeadPosts = useCallback(<T extends { id: string }>(items: T[]): T[] => {
     if (items.length <= MAX_FEED_POSTS) return items;
@@ -138,7 +141,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         // Use paginated fetch for 'all' posts with infinite scroll
         setLoading(true);
         try {
-          const result = await getPostsPaginated(3);
+          const result = await getPostsPaginated(PAGE_SIZE);
           console.log(`📥 Loaded ${result.posts.length} posts (initial load)`);
           setPosts(capHeadPosts(result.posts));
           setLastVisibleDoc(result.lastVisible);
@@ -187,22 +190,29 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   }, [currentUser, activeFilter, tagFilter, capHeadPosts]);
 
   // Load more posts for infinite scroll
-  const loadMorePosts = async () => {
+  const loadMorePosts = useCallback(async () => {
     if (isLoadingMore || !hasMore || activeFilter !== 'all') return;
 
     setIsLoadingMore(true);
     try {
-      const result = await getPostsPaginated(3, lastVisibleDoc);
-      console.log(`📥 Loaded ${result.posts.length} more posts (page ${Math.floor(posts.length / 3) + 1})`);
+      const result = await getPostsPaginated(PAGE_SIZE, lastVisibleDoc);
+      console.log(`📥 Loaded ${result.posts.length} more posts (page ${Math.floor(posts.length / PAGE_SIZE) + 1})`);
       
       // Filter out any posts that already exist (prevent duplicates)
       const existingPostIds = new Set(posts.map(p => p.id));
       const newPosts = result.posts.filter(p => !existingPostIds.has(p.id));
+
+      if (newPosts.length === 0) {
+        setHasMore(false);
+        return;
+      }
+
+      const didTrimNewerFromHead = posts.length + newPosts.length > MAX_FEED_POSTS;
       
       setPosts(prevPosts => capTailPosts([...prevPosts, ...newPosts]));
       setLastVisibleDoc(result.lastVisible);
       setHasMore(result.hasMore);
-      if (newPosts.length > 0) {
+      if (didTrimNewerFromHead) {
         setHasNewer(true);
       }
       
@@ -224,7 +234,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     } finally {
       setIsLoadingMore(false);
     }
-  };
+  }, [activeFilter, capTailPosts, hasMore, isLoadingMore, lastVisibleDoc, posts]);
 
   const loadNewerPosts = async () => {
     if (isLoadingNewer || !hasNewer || activeFilter !== 'all' || posts.length === 0) return;
@@ -234,7 +244,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
       const firstPostDate = posts[0]?.createdAt;
       if (!firstPostDate) return;
 
-      const result = await getNewerPostsSince(firstPostDate, 3);
+      const result = await getNewerPostsSince(firstPostDate, PAGE_SIZE);
       const existingPostIds = new Set(posts.map(p => p.id));
       const newerPosts = result.posts.filter(p => !existingPostIds.has(p.id));
 
@@ -282,6 +292,24 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     itemVisiblePercentThreshold: 50, // Log when 50% of item is visible
     minimumViewTime: 300, // Wait 300ms before logging
   }).current;
+
+  const maybeAutoloadMorePosts = useCallback(() => {
+    if (activeFilter !== 'all' || loading || isLoadingMore || !hasMore) return;
+    if (postsWithUsers.length === 0) return;
+    if (feedContentHeightRef.current <= feedViewportHeightRef.current + 24) {
+      void loadMorePosts();
+    }
+  }, [activeFilter, hasMore, isLoadingMore, loadMorePosts, loading, postsWithUsers.length]);
+
+  const handleFeedLayout = useCallback((event: any) => {
+    feedViewportHeightRef.current = event?.nativeEvent?.layout?.height || 0;
+    maybeAutoloadMorePosts();
+  }, [maybeAutoloadMorePosts]);
+
+  const handleFeedContentSizeChange = useCallback((_width: number, height: number) => {
+    feedContentHeightRef.current = height;
+    maybeAutoloadMorePosts();
+  }, [maybeAutoloadMorePosts]);
 
   const loadUsersForPosts = async (posts: Post[]) => {
     try {
@@ -1225,6 +1253,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             keyExtractor={keyExtractor}
             style={styles.feed}
             contentContainerStyle={styles.feedContent}
+            onLayout={handleFeedLayout}
+            onContentSizeChange={handleFeedContentSizeChange}
             refreshing={refreshing}
             onRefresh={onRefresh}
             showsVerticalScrollIndicator={false}

@@ -1045,15 +1045,21 @@ const styles = StyleSheet.create({
   webLayout: {
     flex: 1,
     flexDirection: 'row',
+    minHeight: 0,
   },
   sidebar: {
     flex: 1,
     width: '100%',
+    minHeight: 0,
   },
   sidebarWeb: {
-    width: isWeb ? Math.max(screenWidth * 0.33, 320) : isTablet ? 300 : '100%',
-    minWidth: isWeb || isTablet ? 280 : 0,
-    maxWidth: isWeb || isTablet ? 400 : '100%',
+    width: '33%',
+    flexBasis: '33%',
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: isWeb || isTablet ? 300 : 0,
+    maxWidth: isWeb || isTablet ? 420 : '100%',
+    height: '100%',
     borderRightWidth: 1,
     borderRightColor: 'rgba(0,0,0,0.1)',
   },
@@ -1283,6 +1289,7 @@ const styles = StyleSheet.create({
   },
   chatArea: {
     flex: 1,
+    minHeight: 0,
   },
   chatGradient: {
     flex: 1,
@@ -1356,7 +1363,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    paddingBottom: 80,
+    paddingBottom: Platform.OS === 'web' ? 12 : 80,
   },
   messageContainer: {
     marginVertical: 4,
