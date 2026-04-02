@@ -1,1 +1,2 @@
-EXPO_PUBLIC_GEMINI_API_KEY=AIzaSyCO69ee9FrfvI-kCgEzF_Jff-PHyDyisQA
+# Do not store secrets in source files.
+# Set EXPO_PUBLIC_GEMINI_API_KEY in GitHub Actions secrets and local .env only.
