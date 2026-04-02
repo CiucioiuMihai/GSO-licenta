@@ -899,6 +899,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
           <FlatList
             ref={flatListRef}
             style={styles.messagesList}
+            contentContainerStyle={styles.messagesListContent}
             data={messages}
             keyExtractor={(item) => item.id}
             onContentSizeChange={() => scrollMessagesToBottom(false)}
@@ -1043,16 +1044,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#764ba2',
+    overflow: 'hidden',
   },
   webLayout: {
     flex: 1,
     flexDirection: 'row',
     minHeight: 0,
+    overflow: 'hidden',
   },
   sidebar: {
     flex: 1,
     width: '100%',
     minHeight: 0,
+    overflow: 'hidden',
   },
   sidebarWeb: {
     width: '33%',
@@ -1067,6 +1071,7 @@ const styles = StyleSheet.create({
   },
   sidebarGradient: {
     flex: 1,
+    minHeight: 0,
   },
   sidebarHeader: {
     flexDirection: 'row',
@@ -1292,9 +1297,12 @@ const styles = StyleSheet.create({
   chatArea: {
     flex: 1,
     minHeight: 0,
+    overflow: 'hidden',
   },
   chatGradient: {
     flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
   },
   emptyChatGradient: {
     flex: 1,
@@ -1380,9 +1388,13 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     flex: 1,
+    minHeight: 0,
     paddingHorizontal: 16,
     paddingVertical: 8,
     paddingBottom: Platform.OS === 'web' ? 12 : 80,
+  },
+  messagesListContent: {
+    paddingBottom: 8,
   },
   messageContainer: {
     marginVertical: 4,
