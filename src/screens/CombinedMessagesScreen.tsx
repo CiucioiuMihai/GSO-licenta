@@ -1049,6 +1049,7 @@ const styles = StyleSheet.create({
   webLayout: {
     flex: 1,
     flexDirection: 'row',
+    marginTop: Platform.OS === 'web' ? 70 : 0,
     minHeight: 0,
     overflow: 'hidden',
   },
@@ -1065,7 +1066,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     minWidth: isWeb || isTablet ? 300 : 0,
     maxWidth: isWeb || isTablet ? 420 : '100%',
-    height: '100%',
     borderRightWidth: 1,
     borderRightColor: 'rgba(0,0,0,0.1)',
   },
@@ -1151,6 +1151,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   sidebarListContent: {
+    flexGrow: 1,
     paddingBottom: 80,
   },
   sidebarListContentMobile: {
@@ -1394,6 +1395,7 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'web' ? 12 : 80,
   },
   messagesListContent: {
+    flexGrow: 1,
     paddingBottom: 8,
   },
   messageContainer: {

@@ -379,7 +379,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
   if (loading && !refreshing) {
     return (
       <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.container}>
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#764ba2" />
             <Text style={styles.loadingText}>Loading reports...</Text>
@@ -392,7 +392,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
 
   return (
     <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.container}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -457,6 +457,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
 
         {/* Reports List */}
         <FlatList
+          style={styles.list}
           data={filteredReports}
           renderItem={renderReport}
           keyExtractor={(item) => item.id}
@@ -483,6 +484,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
               <ActivityIndicator color="#fff" style={{ marginTop: 32 }} />
             ) : (
               <FlatList
+                style={styles.list}
                 data={tags}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.listContent}
@@ -520,6 +522,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
               <ActivityIndicator color="#fff" style={{ marginTop: 32 }} />
             ) : (
               <FlatList
+                style={styles.list}
                 data={users}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.listContent}
@@ -726,6 +729,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  safeArea: {
+    flex: 1,
+    paddingTop: Platform.OS === 'web' ? 70 : 0,
+  },
+  list: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -797,6 +807,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   listContent: {
+    flexGrow: 1,
     paddingHorizontal: 20,
     paddingBottom: 100,
   },
