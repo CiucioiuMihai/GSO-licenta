@@ -838,8 +838,10 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
         <View style={styles.chatArea}>
           <LinearGradient colors={['#f8f9fa', '#e9ecef']} style={styles.emptyChatGradient}>
             <View style={styles.emptyChatContainer}>
-              <Text style={styles.emptyChatTitle}>💬</Text>
-              <Text style={styles.emptyChatText}>Select a conversation to start messaging</Text>
+              <View style={styles.emptyChatCard}>
+                <Text style={styles.emptyChatTitle}>💬</Text>
+                <Text style={styles.emptyChatText}>Select a conversation to start messaging</Text>
+              </View>
             </View>
           </LinearGradient>
         </View>
@@ -1296,20 +1298,37 @@ const styles = StyleSheet.create({
   },
   emptyChatGradient: {
     flex: 1,
+    padding: 28,
   },
   emptyChatContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  emptyChatCard: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 28,
+    paddingVertical: 36,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 6,
+  },
   emptyChatTitle: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: 58,
+    marginBottom: 14,
   },
   emptyChatText: {
     fontSize: 18,
-    color: '#666',
+    color: '#4b5563',
     textAlign: 'center',
+    lineHeight: 26,
+    maxWidth: 340,
   },
   chatHeader: {
     flexDirection: 'row',

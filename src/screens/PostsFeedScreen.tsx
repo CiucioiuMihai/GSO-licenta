@@ -60,7 +60,7 @@ const { width } = Dimensions.get('window');
 
 type FilterType = 'all' | 'following' | 'friends' | 'tag';
 const MAX_FEED_POSTS = 20;
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 3;
 
 const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({ 
   onCreatePost, 
@@ -106,8 +106,6 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [selectedReportCategory, setSelectedReportCategory] = useState('');
   const [customReportReason, setCustomReportReason] = useState('');
   const currentUser = auth.currentUser;
-  const feedViewportHeightRef = useRef(0);
-  const feedContentHeightRef = useRef(0);
 
   const capHeadPosts = useCallback(<T extends { id: string }>(items: T[]): T[] => {
     if (items.length <= MAX_FEED_POSTS) return items;
@@ -292,24 +290,6 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     itemVisiblePercentThreshold: 50, // Log when 50% of item is visible
     minimumViewTime: 300, // Wait 300ms before logging
   }).current;
-
-  const maybeAutoloadMorePosts = useCallback(() => {
-    if (activeFilter !== 'all' || loading || isLoadingMore || !hasMore) return;
-    if (postsWithUsers.length === 0) return;
-    if (feedContentHeightRef.current <= feedViewportHeightRef.current + 24) {
-      void loadMorePosts();
-    }
-  }, [activeFilter, hasMore, isLoadingMore, loadMorePosts, loading, postsWithUsers.length]);
-
-  const handleFeedLayout = useCallback((event: any) => {
-    feedViewportHeightRef.current = event?.nativeEvent?.layout?.height || 0;
-    maybeAutoloadMorePosts();
-  }, [maybeAutoloadMorePosts]);
-
-  const handleFeedContentSizeChange = useCallback((_width: number, height: number) => {
-    feedContentHeightRef.current = height;
-    maybeAutoloadMorePosts();
-  }, [maybeAutoloadMorePosts]);
 
   const loadUsersForPosts = async (posts: Post[]) => {
     try {
@@ -1253,8 +1233,6 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             keyExtractor={keyExtractor}
             style={styles.feed}
             contentContainerStyle={styles.feedContent}
-            onLayout={handleFeedLayout}
-            onContentSizeChange={handleFeedContentSizeChange}
             refreshing={refreshing}
             onRefresh={onRefresh}
             showsVerticalScrollIndicator={false}
