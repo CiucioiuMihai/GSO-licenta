@@ -13,6 +13,7 @@ import {
   FlatList,
   ActivityIndicator,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -57,6 +58,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToAdmin,
   onNavigateToLeaderboard,
 }) => {
+  const { width: viewportWidth } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && viewportWidth >= 900;
+
   const [userData, setUserData] = useState<User | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -449,7 +453,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={[styles.safeArea, isDesktopWeb && styles.safeAreaDesktopWeb]} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onBack}>
@@ -805,7 +809,10 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'web' ? 70 : 0,
+    paddingTop: 0,
+  },
+  safeAreaDesktopWeb: {
+    paddingTop: 70,
   },
   loadingContainer: {
     flex: 1,

@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { User } from '@/types';
 import { calculateLevel } from '@/utils/gamification';
@@ -24,6 +25,9 @@ const Navbar: React.FC<NavbarProps> = ({
   mobileBottomOffset = 50,
   mobileBackgroundHeight = 100,
 }) => {
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= 900;
+
   const navItems = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'explore', label: 'Messages', icon: '💬' },
@@ -38,46 +42,44 @@ const Navbar: React.FC<NavbarProps> = ({
     onTabPress(tabId);
   };
 
-  const isWeb = Platform.OS === 'web';
-
   return (
     <>
       {/* Black background below navbar for mobile */}
-      {!isWeb && <View style={[styles.navbarBackground, { height: mobileBackgroundHeight }]} />}
+      {!isDesktopWeb && <View style={[styles.navbarBackground, { height: mobileBackgroundHeight }]} />}
       
       <View
         style={[
           styles.navbar,
-          isWeb ? styles.navbarWeb : styles.navbarMobile,
-          !isWeb && { bottom: mobileBottomOffset },
+          isDesktopWeb ? styles.navbarWeb : styles.navbarMobile,
+          !isDesktopWeb && { bottom: mobileBottomOffset },
         ]}
       >
         {/* Web: Show app info on left, nav in center, user info on right */}
-        {isWeb && (
+        {isDesktopWeb && (
         <View style={styles.webLeft}>
           <Text style={styles.webLogo}>🎮 GSO</Text>
           <Text style={styles.webSubtitle}>Gamified Social</Text>
         </View>
       )}
 
-      <View style={[styles.navItems, isWeb ? styles.navItemsWeb : styles.navItemsMobile]}>
+      <View style={[styles.navItems, isDesktopWeb ? styles.navItemsWeb : styles.navItemsMobile]}>
         {navItems.map((item) => (
           <TouchableOpacity
             key={item.id}
             style={[
               styles.navItem,
-              isWeb && styles.navItemWeb,
+              isDesktopWeb && styles.navItemWeb,
             ]}
             onPress={() => handleTabPress(item.id)}
           >
             <Text style={[
               styles.navIcon,
               activeTab === item.id && styles.navIconActive,
-              isWeb && styles.navIconWeb,
+              isDesktopWeb && styles.navIconWeb,
             ]}>
               {item.icon}
             </Text>
-            {isWeb && (
+            {isDesktopWeb && (
               <Text style={[
                 styles.navLabel,
                 activeTab === item.id && styles.navLabelActive,
@@ -91,7 +93,7 @@ const Navbar: React.FC<NavbarProps> = ({
       </View>
 
       {/* Web: User info on right */}
-      {isWeb && (
+      {isDesktopWeb && (
         <View style={styles.webRight}>
           <Text style={styles.webUserName}>
             {user?.displayName || 'User'}

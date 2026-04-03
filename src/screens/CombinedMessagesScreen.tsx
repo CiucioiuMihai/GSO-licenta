@@ -7,12 +7,13 @@ import {
   StyleSheet,
   FlatList,
   Alert,
-  Dimensions,
   Platform,
+  PanResponder,
   KeyboardAvoidingView,
   ScrollView,
   BackHandler,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -51,9 +52,7 @@ interface CombinedMessagesScreenProps {
 
 type TabType = 'conversations' | 'friends' | 'requests' | 'search';
 
-const { width: screenWidth } = Dimensions.get('window');
-const isWeb = Platform.OS === 'web';
-const isTablet = screenWidth > 768;
+const TAB_ORDER: TabType[] = ['conversations', 'friends', 'requests', 'search'];
 const MESSAGES_BATCH_SIZE = 20;
 
 const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({ 
@@ -66,6 +65,12 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   onNavigateToProfile,
   onNavigateToLeaderboard,
 }) => {
+  const { width: viewportWidth } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
+  const isTablet = !isWeb && viewportWidth > 768;
+  const isDesktopWeb = isWeb && viewportWidth >= 900;
+  const useSplitLayout = isDesktopWeb || isTablet;
+
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('conversations');
   const [navbarTab, setNavbarTab] = useState('explore');
@@ -89,7 +94,34 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
-  const mobileContentBottomSpacing = !isWeb && !isTablet ? 100 : 0;
+  const mobileContentBottomSpacing = !useSplitLayout ? 100 : 0;
+
+  const switchTabBySwipe = (dx: number) => {
+    const currentIndex = TAB_ORDER.indexOf(activeTab);
+    if (currentIndex === -1) return;
+    if (dx < -50 && currentIndex < TAB_ORDER.length - 1) {
+      setActiveTab(TAB_ORDER[currentIndex + 1]);
+    } else if (dx > 50 && currentIndex > 0) {
+      setActiveTab(TAB_ORDER[currentIndex - 1]);
+    }
+  };
+
+  const swipeTabsResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        if (useSplitLayout) return false;
+        const absDx = Math.abs(gesture.dx);
+        const absDy = Math.abs(gesture.dy);
+        return absDx > absDy && absDx > 12;
+      },
+      onPanResponderRelease: (_, gesture) => {
+        switchTabBySwipe(gesture.dx);
+      },
+      onPanResponderTerminate: (_, gesture) => {
+        switchTabBySwipe(gesture.dx);
+      },
+    })
+  ).current;
 
   const scrollMessagesToBottom = (animated: boolean = true) => {
     // Multiple attempts handle async layout/measurement timing on mobile.
@@ -264,7 +296,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   };
 
   useEffect(() => {
-    if (Platform.OS !== 'android' || isWeb || isTablet) {
+    if (Platform.OS !== 'android' || useSplitLayout) {
       return;
     }
 
@@ -279,7 +311,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', onHardwareBackPress);
     return () => subscription.remove();
-  }, [selectedConversation]);
+  }, [selectedConversation, useSplitLayout]);
 
   const loadFriends = async () => {
     try {
@@ -550,6 +582,23 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     }
   };
 
+  const openChatFromFriend = (friendUserId: string) => {
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) return;
+
+    const existingConvo = conversations.find((c) => {
+      const otherUserId = getOtherUserId(c);
+      return otherUserId === friendUserId;
+    });
+
+    const conversationId = existingConvo
+      ? existingConvo.id
+      : [currentUserId, friendUserId].sort().join('_');
+
+    setActiveTab('conversations');
+    handleStartChat(friendUserId, conversationId);
+  };
+
   const handleNavbarTabPress = (tab: string) => {
     setNavbarTab(tab);
     if (tab === 'explore') {
@@ -567,8 +616,38 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     }
   };
 
+  const renderTabs = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[
+        styles.tabContainer,
+      ]}
+      contentContainerStyle={styles.tabContainerContent}
+    >
+      {['conversations', 'friends', 'requests', 'search'].map(tab => (
+        <TouchableOpacity
+          key={tab}
+          style={[
+            styles.tabButton,
+            isWeb && styles.tabButtonWeb,
+            activeTab === tab && styles.activeTabButton,
+          ]}
+          onPress={() => setActiveTab(tab as TabType)}
+        >
+          <Text numberOfLines={1} style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+            {tab === 'conversations' ? 'Chats' :
+             tab === 'friends' ? 'Friends' :
+             tab === 'requests' ? `Requests${friendRequests.length > 0 ? ` (${friendRequests.length})` : ''}` :
+             'Search'}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
+
   const renderLeftSidebar = () => (
-    <View style={[styles.sidebar, (isWeb || isTablet) && styles.sidebarWeb]}>
+    <View style={[styles.sidebar, useSplitLayout && styles.sidebarWeb]}>
       <LinearGradient colors={['#667eea', '#764ba2']} style={styles.sidebarGradient}>
         {/* Header */}
         <View style={styles.sidebarHeader}>
@@ -579,26 +658,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
         </View>
 
         {/* Tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabContainer}>
-          {['conversations', 'friends', 'requests', 'search'].map(tab => (
-            <TouchableOpacity
-              key={tab}
-              style={[
-                styles.tabButton,
-                isWeb && styles.tabButtonWeb,
-                activeTab === tab && styles.activeTabButton,
-              ]}
-              onPress={() => setActiveTab(tab as TabType)}
-            >
-              <Text numberOfLines={1} style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                {tab === 'conversations' ? 'Chats' : 
-                 tab === 'friends' ? 'Friends' :
-                 tab === 'requests' ? `Requests${friendRequests.length > 0 ? ` (${friendRequests.length})` : ''}` :
-                 'Search'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {renderTabs()}
 
         {/* Search Input */}
         {activeTab === 'search' && (
@@ -619,11 +679,12 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 
         {/* Content List */}
         <FlatList
+          {...(!useSplitLayout ? swipeTabsResponder.panHandlers : {})}
           style={styles.sidebarList}
           contentContainerStyle={[
             styles.sidebarListContent,
-            !isWeb && !isTablet && styles.sidebarListContentMobile,
-            !isWeb && !isTablet && { paddingBottom: 16 + mobileContentBottomSpacing },
+            !useSplitLayout && styles.sidebarListContentMobile,
+            !useSplitLayout && { paddingBottom: 16 + mobileContentBottomSpacing },
           ]}
           showsVerticalScrollIndicator={false}
           data={
@@ -735,17 +796,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.chatButtonSmall}
-                      onPress={() => {
-                        const existingConvo = conversations.find(c => {
-                          const otherUserId = getOtherUserId(c);
-                          return otherUserId === item.id;
-                        });
-                        if (existingConvo) {
-                          handleStartChat(item.id, existingConvo.id);
-                        } else {
-                          handleStartChat(item.id, `temp_${item.id}`);
-                        }
-                      }}
+                      onPress={() => openChatFromFriend(item.id)}
                     >
                       <Text style={styles.chatButtonSmallText}>💬</Text>
                     </TouchableOpacity>
@@ -827,7 +878,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
             </View>
           }
         />
-        
+
       </LinearGradient>
     </View>
   );
@@ -851,14 +902,14 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
     return (
       <KeyboardAvoidingView
         style={styles.chatArea}
-        enabled={!isWeb && !isTablet}
+        enabled={!useSplitLayout}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
       >
         <LinearGradient colors={['#667eea', '#764ba2']} style={styles.chatGradient}>
           {/* Chat Header */}
           <View style={styles.chatHeader}>
-            {!isWeb && !isTablet && (
+            {!useSplitLayout && (
               <TouchableOpacity 
                 onPress={() => {
                   setSelectedConversation(null);
@@ -990,7 +1041,10 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
                 selectionColor="#2ecc71"
                 value={newMessage}
                 onChangeText={setNewMessage}
-                multiline
+                multiline={!isWeb}
+                returnKeyType="send"
+                onSubmitEditing={handleSendMessage}
+                blurOnSubmit={false}
                 maxLength={1000}
               />
               <TouchableOpacity
@@ -1008,7 +1062,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   };
 
   // For web/tablet: side-by-side layout
-  if (isWeb || isTablet) {
+  if (useSplitLayout) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.webLayout}>
@@ -1027,7 +1081,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
       ) : (
         <>
           {renderLeftSidebar()}
-          {!isWeb && !isTablet && (
+          {!useSplitLayout && (
             <Navbar
               activeTab={navbarTab}
               onTabPress={handleNavbarTabPress}
@@ -1064,8 +1118,8 @@ const styles = StyleSheet.create({
     flexBasis: '33%',
     flexGrow: 0,
     flexShrink: 0,
-    minWidth: isWeb || isTablet ? 300 : 0,
-    maxWidth: isWeb || isTablet ? 420 : '100%',
+    minWidth: 300,
+    maxWidth: 420,
     borderRightWidth: 1,
     borderRightColor: 'rgba(0,0,0,0.1)',
   },
@@ -1097,11 +1151,18 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingTop: 8,
+    paddingBottom: 6,
+    flexGrow: 0,
+  },
+  tabContainerContent: {
+    alignItems: 'center',
   },
   tabButton: {
-    minWidth: 82,
-    paddingVertical: 8,
+    minWidth: 72,
+    height: 34,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
     paddingHorizontal: 10,
     marginHorizontal: 4,
     borderRadius: 16,
@@ -1109,6 +1170,7 @@ const styles = StyleSheet.create({
   },
   tabButtonWeb: {
     minWidth: 74,
+    height: 34,
     paddingHorizontal: 8,
   },
   activeTabButton: {

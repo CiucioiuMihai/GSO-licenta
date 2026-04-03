@@ -7,6 +7,7 @@ import {
   ScrollView,
   Platform,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,6 +37,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
   onNavigateToLeaderboard,
   onNavigateToProfile,
 }) => {
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= 900;
+
   const [activeTab, setActiveTab] = useState('home');
   const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -249,7 +253,6 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
     }
   };
 
-  const isWeb = Platform.OS === 'web';
   const dailyQuestClaimedToday = hasClaimedDailyQuestToday(userData?.lastDailyQuestDate);
   const activeQuest = userData?.activeDailyQuest;
   const questProgressText = activeQuest ? `${activeQuest.progress}/${activeQuest.target}` : '--/--';
@@ -261,7 +264,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
         <SafeAreaView style={styles.safeArea} edges={['top']}>
           {/* Main Content */}
           <ScrollView 
-            style={[styles.scrollView, isWeb ? styles.scrollViewWeb : styles.scrollViewMobile]}
+            style={[styles.scrollView, isDesktopWeb ? styles.scrollViewWeb : styles.scrollViewMobile]}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             refreshControl={
@@ -277,8 +280,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
           >
             <View style={styles.content}>
               {/* Header */}
-              <View style={styles.header}>
-                {!isWeb && (
+              <View style={[styles.header, isDesktopWeb && styles.headerDesktopWeb]}>
+                {!isDesktopWeb && (
                   <>
                     <Text style={styles.logo}>🎮 GSO</Text>
                     <Text style={styles.subtitle}>Gamified Social Media</Text>
@@ -424,6 +427,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
             <View
               style={[
                 styles.snackbar,
+                isDesktopWeb && styles.snackbarDesktopWeb,
                 snackbar.kind === 'success' && styles.snackbarSuccess,
                 snackbar.kind === 'error' && styles.snackbarError,
                 snackbar.kind === 'info' && styles.snackbarInfo,
@@ -466,7 +470,10 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 30,
-    marginTop: Platform.OS === 'web' ? 20 : 40,
+    marginTop: 40,
+  },
+  headerDesktopWeb: {
+    marginTop: 20,
   },
   logo: {
     fontSize: 48,
@@ -693,13 +700,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: Platform.OS === 'web' ? 24 : 96,
+    bottom: 96,
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
     zIndex: 20,
     borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  snackbarDesktopWeb: {
+    bottom: 24,
   },
   snackbarSuccess: {
     backgroundColor: 'rgba(46, 125, 50, 0.92)',

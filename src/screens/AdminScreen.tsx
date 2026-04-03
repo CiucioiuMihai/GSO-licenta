@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -47,6 +48,9 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
   onNavigateToProfile,
   onNavigateToLeaderboard,
 }) => {
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= 900;
+
   const [reports, setReports] = useState<Report[]>([]);
   const [filteredReports, setFilteredReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -379,7 +383,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
   if (loading && !refreshing) {
     return (
       <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.container}>
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={[styles.safeArea, isDesktopWeb && styles.safeAreaDesktopWeb]}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#764ba2" />
             <Text style={styles.loadingText}>Loading reports...</Text>
@@ -392,7 +396,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({
 
   return (
     <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={[styles.safeArea, isDesktopWeb && styles.safeAreaDesktopWeb]}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -731,7 +735,10 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'web' ? 70 : 0,
+    paddingTop: 0,
+  },
+  safeAreaDesktopWeb: {
+    paddingTop: 70,
   },
   list: {
     flex: 1,

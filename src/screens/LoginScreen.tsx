@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
   const [loading, setLoading] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const passwordInputRef = useRef<TextInput>(null);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -103,6 +104,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordInputRef.current?.focus()}
                   />
                 </View>
 
@@ -110,6 +113,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   <Text style={styles.label}>Password</Text>
                   <View style={styles.passwordRow}>
                     <TextInput
+                      ref={passwordInputRef}
                       style={[styles.input, styles.passwordInput]}
                       placeholder="Enter your password"
                       placeholderTextColor="rgba(255, 255, 255, 0.6)"
@@ -118,6 +122,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
                       autoCorrect={false}
+                      returnKeyType="go"
+                      onSubmitEditing={handleLogin}
                     />
                     <TouchableOpacity
                       style={styles.eyeButton}

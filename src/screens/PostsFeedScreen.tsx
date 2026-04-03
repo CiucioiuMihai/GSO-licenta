@@ -14,6 +14,7 @@ import {
   Platform,
   Pressable,
   KeyboardAvoidingView,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,6 +41,7 @@ import {
 import { createReport } from '@/services/reportService';
 import { auth } from '@/services/firebase';
 import { offlineService } from '@/services/offlineService';
+import { hydrateImagesFromFirestore } from '@/utils/imageUtils';
 import Navbar from '@/components/Navbar';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
@@ -73,6 +75,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   onNavigateToProfile,
   onNavigateToLeaderboard,
 }) => {
+  const { width: viewportWidth } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && viewportWidth >= 900;
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [postsWithUsers, setPostsWithUsers] = useState<(Post & { user: User })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -403,6 +408,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
           const serverPost = { id: postDoc.id, ...postDoc.data() } as Post;
           const normalizedServerPost: Post = {
             ...serverPost,
+            images: hydrateImagesFromFirestore((postDoc.data().images || []) as any[]),
             createdAt: (postDoc.data().createdAt as any)?.toDate?.() || serverPost.createdAt,
             updatedAt: (postDoc.data().updatedAt as any)?.toDate?.() || serverPost.updatedAt,
           };
@@ -850,7 +856,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     const userIsFollowed = isFollowing(item.userId);
     
     return (
-      <View style={styles.postContainer}>
+      <View style={[styles.postContainer, isDesktopWeb && styles.postContainerDesktop]}>
         {/* Post Header */}
         <View style={styles.postHeader}>
           <Image
@@ -913,7 +919,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
               >
                 <Image
                   source={{ uri: item.images[0].data }}
-                  style={styles.singlePostImage}
+                  style={[styles.singlePostImage, isDesktopWeb && styles.singlePostImageDesktop]}
                   resizeMode="cover"
                 />
               </TouchableOpacity>
@@ -932,7 +938,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
                   >
                     <Image
                       source={{ uri: image.data }}
-                      style={styles.multiplePostImage}
+                      style={[styles.multiplePostImage, isDesktopWeb && styles.multiplePostImageDesktop]}
                       resizeMode="cover"
                     />
                   </TouchableOpacity>
@@ -984,6 +990,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     handleLikePost,
     openComments,
     formatTime,
+    isDesktopWeb,
   ]);
 
   const keyExtractor = useCallback((item: Post & { user: User }) => item.id, []);
@@ -1137,7 +1144,10 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
                   onChangeText={setCommentText}
                   placeholder={replyingTo ? "Write a reply..." : "Add a comment..."}
                   placeholderTextColor="rgba(255, 255, 255, 0.7)"
-                  multiline
+                  multiline={Platform.OS !== 'web'}
+                  returnKeyType="send"
+                  onSubmitEditing={handleAddComment}
+                  blurOnSubmit={false}
                   maxLength={500}
                 />
                 <TouchableOpacity
@@ -1159,9 +1169,9 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={[styles.safeArea, isDesktopWeb && styles.safeAreaDesktopWeb]} edges={['top']}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, isDesktopWeb && styles.headerDesktopWeb]}>
           <TouchableOpacity onPress={onBack}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
@@ -1172,7 +1182,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         </View>
 
         {/* Filter Tabs */}
-        <View style={styles.filterContainer}>
+        <View style={[styles.filterContainer, isDesktopWeb && styles.filterContainerDesktop]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
             <TouchableOpacity
               style={[styles.filterTab, activeFilter === 'all' && styles.filterTabActive]}
@@ -1231,8 +1241,8 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             data={postsWithUsers}
             renderItem={renderPost}
             keyExtractor={keyExtractor}
-            style={styles.feed}
-            contentContainerStyle={styles.feedContent}
+            style={[styles.feed, isDesktopWeb && styles.feedDesktop]}
+            contentContainerStyle={[styles.feedContent, isDesktopWeb && styles.feedContentDesktop]}
             refreshing={refreshing}
             onRefresh={onRefresh}
             showsVerticalScrollIndicator={false}
@@ -1453,7 +1463,10 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'web' ? 70 : 0,
+    paddingTop: 0,
+  },
+  safeAreaDesktopWeb: {
+    paddingTop: 70,
   },
   header: {
     flexDirection: 'row',
@@ -1463,9 +1476,12 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-    maxWidth: Platform.OS === 'web' ? 600 : '100%',
+    maxWidth: '100%',
     width: '100%',
     alignSelf: 'center',
+  },
+  headerDesktopWeb: {
+    maxWidth: 600,
   },
   backButton: {
     color: 'white',
@@ -1492,18 +1508,27 @@ const styles = StyleSheet.create({
   feed: {
     flex: 1,
     width: '100%',
-    maxWidth: Platform.OS === 'web' ? 600 : '100%',
+    maxWidth: '100%',
+  },
+  feedDesktop: {
+    maxWidth: 600,
   },
   feedContent: {
     // Keep last post actions visible above the fixed bottom navbar
-    paddingBottom: Platform.OS === 'web' ? 90 : 170,
+    paddingBottom: 170,
+  },
+  feedContentDesktop: {
+    paddingBottom: 90,
   },
   postContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    margin: Platform.OS === 'web' ? 15 : 15,
-    marginHorizontal: Platform.OS === 'web' ? 0 : 15,
+    margin: 15,
+    marginHorizontal: 15,
     padding: 15,
     borderRadius: 15,
+  },
+  postContainerDesktop: {
+    marginHorizontal: 0,
   },
   postHeader: {
     flexDirection: 'row',
@@ -1563,14 +1588,21 @@ const styles = StyleSheet.create({
   },
   singlePostImage: {
     width: '100%',
-    height: Platform.OS === 'web' ? 400 : 300,
+    height: 300,
     borderRadius: 10,
   },
+  singlePostImageDesktop: {
+    height: 400,
+  },
   multiplePostImage: {
-    width: Platform.OS === 'web' ? 280 : 220,
-    height: Platform.OS === 'web' ? 350 : 280,
+    width: 220,
+    height: 280,
     borderRadius: 10,
     marginRight: 10,
+  },
+  multiplePostImageDesktop: {
+    width: 280,
+    height: 350,
   },
   postImage: {
     width: width - 80,
@@ -1885,11 +1917,14 @@ const styles = StyleSheet.create({
   // Filter styles
   filterContainer: {
     width: '100%',
-    maxWidth: Platform.OS === 'web' ? 600 : '100%',
+    maxWidth: '100%',
     alignSelf: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  filterContainerDesktop: {
+    maxWidth: 600,
   },
   filterScroll: {
     paddingHorizontal: 15,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Dimensions,
   Image,
   KeyboardAvoidingView,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -67,6 +68,9 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
   onNavigateToProfile,
   onNavigateToLeaderboard,
 }) => {
+  const { width: viewportWidth } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && viewportWidth >= 900;
+
   const [content, setContent] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
@@ -77,6 +81,7 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [navbarTab, setNavbarTab] = useState('create');
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
+  const tagInputRef = useRef<TextInput>(null);
   const currentUser = auth.currentUser;
 
   useEffect(() => {
@@ -131,6 +136,7 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
       setTags([...tags, cleanTag]);
       setTagInput('');
       setShowTagSuggestions(false);
+      setTimeout(() => tagInputRef.current?.focus(), 0);
     }
   };
 
@@ -297,7 +303,7 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={[styles.safeArea, isDesktopWeb && styles.safeAreaDesktopWeb]} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={onBack}>
@@ -370,12 +376,15 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
             <Text style={styles.tagsTitle}>Tags (Optional)</Text>
             <View style={styles.tagInputContainer}>
               <TextInput
+                ref={tagInputRef}
                 style={styles.tagInput}
                 value={tagInput}
                 onChangeText={setTagInput}
                 placeholder="Type a tag and press enter..."
                 placeholderTextColor="rgba(255, 255, 255, 0.7)"
                 onSubmitEditing={handleTagInputSubmit}
+                blurOnSubmit={false}
+                returnKeyType="done"
                 maxLength={20}
               />
               <TouchableOpacity style={styles.addTagButton} onPress={handleTagInputSubmit}>
@@ -434,7 +443,10 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'web' ? 70 : 0,
+    paddingTop: 0,
+  },
+  safeAreaDesktopWeb: {
+    paddingTop: 70,
   },
   keyboardAvoidingView: {
     flex: 1,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,9 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const emailInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
+  const confirmPasswordInputRef = useRef<TextInput>(null);
 
   const validateForm = () => {
     if (!email || !password || !confirmPassword || !displayName) {
@@ -146,12 +149,15 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                     onChangeText={setDisplayName}
                     autoCapitalize="words"
                     autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => emailInputRef.current?.focus()}
                   />
                 </View>
 
                 <View style={styles.inputContainer}>
                   <Text style={styles.label}>Email</Text>
                   <TextInput
+                    ref={emailInputRef}
                     style={styles.input}
                     placeholder="Enter your email"
                     placeholderTextColor="rgba(255, 255, 255, 0.6)"
@@ -160,6 +166,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordInputRef.current?.focus()}
                   />
                 </View>
 
@@ -167,6 +175,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                   <Text style={styles.label}>Password</Text>
                   <View style={styles.passwordRow}>
                     <TextInput
+                      ref={passwordInputRef}
                       style={[styles.input, styles.passwordInput]}
                       placeholder="Create a password (min. 6 characters)"
                       placeholderTextColor="rgba(255, 255, 255, 0.6)"
@@ -175,6 +184,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
                       autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => confirmPasswordInputRef.current?.focus()}
                     />
                     <TouchableOpacity
                       style={styles.eyeButton}
@@ -189,6 +200,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                   <Text style={styles.label}>Confirm Password</Text>
                   <View style={styles.passwordRow}>
                     <TextInput
+                      ref={confirmPasswordInputRef}
                       style={[styles.input, styles.passwordInput]}
                       placeholder="Confirm your password"
                       placeholderTextColor="rgba(255, 255, 255, 0.6)"
@@ -197,6 +209,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                       secureTextEntry={!showConfirmPassword}
                       autoCapitalize="none"
                       autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={handleRegister}
                     />
                     <TouchableOpacity
                       style={styles.eyeButton}
