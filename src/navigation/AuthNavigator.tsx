@@ -15,6 +15,10 @@ import LeaderboardScreen from '../screens/LeaderboardScreen';
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
 type Screen = 'login' | 'register' | 'home' | 'combined-messages' | 'posts-feed' | 'create-post' | 'profile' | 'admin' | 'leaderboard';
+type BrowserState = {
+  screen: Screen;
+  profileUserId?: string | null;
+};
 
 const AuthNavigator: React.FC = () => {
   const [authState, setAuthState] = useState<AuthState>('loading');
@@ -22,9 +26,28 @@ const AuthNavigator: React.FC = () => {
   const [screenHistory, setScreenHistory] = useState<Screen[]>(['login']);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
-  const navigateTo = (screen: Screen, options?: { replace?: boolean }) => {
+  const syncBrowserHistory = (screen: Screen, options?: { replace?: boolean; profileUserId?: string | null }) => {
+    if (!isWeb) {
+      return;
+    }
+
+    const state: BrowserState = {
+      screen,
+      profileUserId: options?.profileUserId ?? null,
+    };
+
+    if (options?.replace) {
+      window.history.replaceState(state, '', window.location.href);
+    } else {
+      window.history.pushState(state, '', window.location.href);
+    }
+  };
+
+  const navigateTo = (screen: Screen, options?: { replace?: boolean; profileUserId?: string | null }) => {
     setCurrentScreen(screen);
+    setProfileUserId(options?.profileUserId ?? null);
     setScreenHistory((prev) => {
       if (options?.replace) {
         const base = prev.length > 0 ? prev.slice(0, -1) : [];
@@ -35,9 +58,16 @@ const AuthNavigator: React.FC = () => {
       }
       return [...prev, screen];
     });
+
+    syncBrowserHistory(screen, options);
   };
 
   const goBack = () => {
+    if (isWeb && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+
     setScreenHistory((prev) => {
       if (prev.length <= 1) {
         return prev;
@@ -55,16 +85,39 @@ const AuthNavigator: React.FC = () => {
         setAuthState('authenticated');
         setCurrentScreen('home');
         setScreenHistory(['home']);
+        setProfileUserId(null);
+        syncBrowserHistory('home', { replace: true, profileUserId: null });
       } else {
         setUser(null);
         setAuthState('unauthenticated');
         setCurrentScreen('login');
         setScreenHistory(['login']);
+        setProfileUserId(null);
+        syncBrowserHistory('login', { replace: true, profileUserId: null });
       }
     });
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!isWeb) {
+      return;
+    }
+
+    const onPopState = (event: PopStateEvent) => {
+      const state = (event.state || {}) as BrowserState;
+      if (!state.screen) {
+        return;
+      }
+
+      setCurrentScreen(state.screen);
+      setProfileUserId(state.profileUserId ?? null);
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [isWeb]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -138,7 +191,7 @@ const AuthNavigator: React.FC = () => {
 
   const handleNavigateToProfile = (userId?: string) => {
     setProfileUserId(userId || null);
-    navigateTo('profile');
+    navigateTo('profile', { profileUserId: userId || null });
   };
 
   const handlePostCreated = () => {
