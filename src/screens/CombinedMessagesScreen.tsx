@@ -1072,7 +1072,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   if (useSplitLayout) {
     return (
       <SafeAreaView style={styles.container}>
-        {Platform.OS === 'web' && (
+        {Platform.OS === 'web' && !selectedConversation && (
           <Navbar
             activeTab={navbarTab}
             onTabPress={handleNavbarTabPress}
@@ -1090,7 +1090,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   // For mobile: full-screen list or chat based on selection
   return (
     <SafeAreaView style={styles.container} edges={mobileSafeAreaEdges}>
-      {Platform.OS === 'web' && (
+      {Platform.OS === 'web' && !selectedConversation && (
         <Navbar
           activeTab={navbarTab}
           onTabPress={handleNavbarTabPress}
@@ -1389,7 +1389,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   chatGradientMobile: {
-    paddingBottom: 50,
+    paddingBottom: 0,
   },
   emptyChatGradient: {
     flex: 1,
@@ -1485,7 +1485,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   messagesListContentMobile: {
-    paddingBottom: 50,
+    paddingBottom: 8,
   },
   messageContainer: {
     marginVertical: 4,
