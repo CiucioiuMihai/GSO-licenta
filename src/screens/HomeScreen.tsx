@@ -264,7 +264,10 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
         <SafeAreaView style={styles.safeArea} edges={['top']}>
           {/* Main Content */}
           <ScrollView 
-            style={[styles.scrollView, isDesktopWeb ? styles.scrollViewWeb : styles.scrollViewMobile]}
+            style={[
+              styles.scrollView,
+              isDesktopWeb ? styles.scrollViewWebDesktop : (Platform.OS === 'web' ? styles.scrollViewWeb : styles.scrollViewMobile)
+            ]}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             refreshControl={
@@ -456,7 +459,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollViewWeb: {
-    marginTop: 70, // Account for top navbar
+    marginTop: 0,
+  },
+  scrollViewWebDesktop: {
+    marginTop: 70,
   },
   scrollViewMobile: {
     marginBottom: 80, // Account for bottom navbar
@@ -689,6 +695,7 @@ const styles = StyleSheet.create({
     borderWidth: Platform.OS === 'android' ? 0 : 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
     marginTop: 20,
+    marginBottom: 100, // Ensure button is scrollable above navbar
   },
   logoutText: {
     fontSize: 16,

@@ -32,7 +32,9 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      "expo-asset",
+      "expo-font"
     ],
     "extra": {
       "eas": {

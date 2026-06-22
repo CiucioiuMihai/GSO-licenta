@@ -719,7 +719,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'web' ? 70 : 0,
+    paddingTop: 0,
   },
   header: {
     flexDirection: 'row',

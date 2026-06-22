@@ -51,6 +51,7 @@ interface CombinedMessagesScreenProps {
 }
 
 type TabType = 'conversations' | 'friends' | 'requests' | 'search';
+const mobileSafeAreaEdges: ('top' | 'bottom')[] = Platform.OS === 'android' ? ['bottom'] : ['top', 'bottom'];
 
 const TAB_ORDER: TabType[] = ['conversations', 'friends', 'requests', 'search'];
 const MESSAGES_BATCH_SIZE = 20;
@@ -906,7 +907,10 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
       >
-        <LinearGradient colors={['#667eea', '#764ba2']} style={styles.chatGradient}>
+        <LinearGradient
+          colors={['#667eea', '#764ba2']}
+          style={[styles.chatGradient, !useSplitLayout && styles.chatGradientMobile]}
+        >
           {/* Chat Header */}
           <View style={styles.chatHeader}>
             {!useSplitLayout && (
@@ -950,7 +954,10 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
           <FlatList
             ref={flatListRef}
             style={styles.messagesList}
-            contentContainerStyle={styles.messagesListContent}
+            contentContainerStyle={[
+              styles.messagesListContent,
+              !useSplitLayout && styles.messagesListContentMobile,
+            ]}
             data={messages}
             keyExtractor={(item) => item.id}
             onContentSizeChange={() => scrollMessagesToBottom(false)}
@@ -1082,7 +1089,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
 
   // For mobile: full-screen list or chat based on selection
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={mobileSafeAreaEdges}>
       {Platform.OS === 'web' && (
         <Navbar
           activeTab={navbarTab}
@@ -1381,6 +1388,9 @@ const styles = StyleSheet.create({
     minHeight: 0,
     overflow: 'hidden',
   },
+  chatGradientMobile: {
+    paddingBottom: 50,
+  },
   emptyChatGradient: {
     flex: 1,
     padding: 28,
@@ -1473,6 +1483,9 @@ const styles = StyleSheet.create({
   messagesListContent: {
     flexGrow: 1,
     paddingBottom: 8,
+  },
+  messagesListContentMobile: {
+    paddingBottom: 50,
   },
   messageContainer: {
     marginVertical: 4,

@@ -4,6 +4,7 @@ import {
   Post, 
   Comment, 
   Reply,
+  PostImage,
   User, 
   Notification, 
   OfflineAction, 
@@ -133,22 +134,50 @@ class OfflineService {
     return cachedPosts || [];
   }
 
-  public async createPost(userId: string, content: string, tags: string[] = [], images?: string[]): Promise<Post> {
+  private normalizeOfflinePostImages(images?: Array<string | PostImage>): PostImage[] {
+    if (!images || images.length === 0) {
+      return [];
+    }
+
+    return images
+      .map((img) => {
+        if (typeof img === 'string') {
+          return {
+            data: img,
+            width: 800,
+            height: 600,
+            size: img.length,
+          } as PostImage;
+        }
+
+        return {
+          data: img.data,
+          width: img.width || 800,
+          height: img.height || 600,
+          size: img.size || (img.data?.length || 0),
+          sourceUri: img.sourceUri,
+          chunks: img.chunks,
+          chunkCount: img.chunkCount,
+          mimeType: img.mimeType,
+          chunked: img.chunked,
+        } as PostImage;
+      })
+      .filter((img) => !!img.data);
+  }
+
+  public async createPost(userId: string, content: string, tags: string[] = [], images?: Array<string | PostImage>): Promise<Post> {
+    const normalizedImages = this.normalizeOfflinePostImages(images);
+
     const postData = {
       userId,
       content,
       tags,
-      images: images?.map(img => ({
-        data: img,
-        width: 800,
-        height: 600,
-        size: img.length
-      })) || []
+      images: normalizedImages
     };
 
     if (this.isOnline) {
       try {
-        await firebaseCreatePost(content, tags, images);
+        await firebaseCreatePost(content, tags, normalizedImages);
         const newPost: Post = {
           id: `post_${Date.now()}`,
           ...postData,
@@ -175,12 +204,7 @@ class OfflineService {
       userId,
       content,
       tags,
-      images: images?.map(img => ({
-        data: img,
-        width: 800,
-        height: 600,
-        size: img.length
-      })) || [],
+      images: normalizedImages,
       likes: 0,
       comments: 0,
       shares: 0,
@@ -195,7 +219,7 @@ class OfflineService {
       id: `create_post_${Date.now()}`,
       type: 'CREATE_POST',
       userId,
-      data: { content, tags, images },
+      data: { content, tags, images: normalizedImages },
       timestamp: Date.now()
     });
 
@@ -501,7 +525,11 @@ class OfflineService {
   private async processOfflineAction(action: OfflineAction): Promise<void> {
     switch (action.type) {
       case 'CREATE_POST':
-        await firebaseCreatePost(action.data.content, action.data.tags || [], action.data.images);
+        await firebaseCreatePost(
+          action.data.content,
+          action.data.tags || [],
+          this.normalizeOfflinePostImages(action.data.images)
+        );
         break;
       
       case 'LIKE_POST':
@@ -557,7 +585,7 @@ export const offlineService = new OfflineService();
 // Export individual functions for easier usage
 export const isOnline = (): boolean => offlineService.isConnected();
 export const getPosts = (forceOnline?: boolean): Promise<Post[]> => offlineService.getPosts(forceOnline);
-export const createPost = (userId: string, content: string, tags: string[] = [], images?: string[]): Promise<Post> => 
+export const createPost = (userId: string, content: string, tags: string[] = [], images?: Array<string | PostImage>): Promise<Post> => 
   offlineService.createPost(userId, content, tags, images);
 export const likePost = (postId: string, userId: string): Promise<void> => 
   offlineService.likePost(postId, userId);

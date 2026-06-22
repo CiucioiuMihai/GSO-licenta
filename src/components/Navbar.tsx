@@ -27,6 +27,9 @@ const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const { width } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === 'web' && width >= 900;
+  const isMobileWeb = Platform.OS === 'web' && width < 900;
+  const resolvedMobileBottomOffset = isMobileWeb ? 0 : mobileBottomOffset;
+  const resolvedMobileBackgroundHeight = isMobileWeb ? 56 : mobileBackgroundHeight;
 
   const navItems = [
     { id: 'home', label: 'Home', icon: '🏠' },
@@ -45,13 +48,13 @@ const Navbar: React.FC<NavbarProps> = ({
   return (
     <>
       {/* Black background below navbar for mobile */}
-      {!isDesktopWeb && <View style={[styles.navbarBackground, { height: mobileBackgroundHeight }]} />}
+      {!isDesktopWeb && <View style={[styles.navbarBackground, { height: resolvedMobileBackgroundHeight }]} />}
       
       <View
         style={[
           styles.navbar,
           isDesktopWeb ? styles.navbarWeb : styles.navbarMobile,
-          !isDesktopWeb && { bottom: mobileBottomOffset },
+          !isDesktopWeb && { bottom: resolvedMobileBottomOffset },
         ]}
       >
         {/* Web: Show app info on left, nav in center, user info on right */}

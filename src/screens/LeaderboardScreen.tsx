@@ -11,6 +11,7 @@ import {
   RefreshControl,
   ScrollView,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -51,6 +52,9 @@ const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
   onNavigateToProfile,
   onNavigateToLeaderboard,
 }) => {
+  const { width: viewportWidth } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && viewportWidth >= 900;
+
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -422,7 +426,7 @@ const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
 
   return (
     <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.container}>
-      <SafeAreaView style={[styles.safeArea, Platform.OS === 'web' && styles.safeAreaWeb]} edges={['top']}>
+      <SafeAreaView style={[styles.safeArea, isDesktopWeb && styles.safeAreaWeb]} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Progress</Text>
           <Text style={styles.headerSub}>

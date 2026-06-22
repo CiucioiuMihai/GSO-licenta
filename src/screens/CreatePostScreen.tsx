@@ -252,7 +252,7 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({
           currentUser.uid,
           content.trim(),
           tags,
-          processedImages.map((image) => image.data)
+          processedImages
         );
         Alert.alert('Queued', 'Post saved offline and will sync when internet is back.');
       }
