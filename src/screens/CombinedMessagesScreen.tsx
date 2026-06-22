@@ -1478,7 +1478,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    paddingBottom: Platform.OS === 'web' ? 12 : 80,
+    paddingBottom: Platform.OS === 'web' ? 12 : 50,
   },
   messagesListContent: {
     flexGrow: 1,
