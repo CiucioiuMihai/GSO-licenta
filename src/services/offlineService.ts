@@ -50,6 +50,7 @@ class OfflineService {
   private isOnline: boolean = true;
   private syncInProgress: boolean = false;
   private syncQueue: OfflineAction[] = [];
+  private syncCompletedListeners: Array<(actions: OfflineAction[]) => void> = [];
 
   constructor() {
     this.initializeNetworkListener();
@@ -79,6 +80,14 @@ class OfflineService {
 
   public isConnected(): boolean {
     return this.isOnline;
+  }
+
+  public onSyncCompleted(listener: (actions: OfflineAction[]) => void): () => void {
+    this.syncCompletedListeners.push(listener);
+
+    return () => {
+      this.syncCompletedListeners = this.syncCompletedListeners.filter((registeredListener) => registeredListener !== listener);
+    };
   }
 
   // Cache management
@@ -289,7 +298,8 @@ class OfflineService {
       replies: [],
       repliesCount: 0,
       createdAt: new Date(),
-      isLocal: true
+      isLocal: true,
+      synced: false
     };
 
     await this.addOfflineAction({
@@ -518,7 +528,18 @@ class OfflineService {
     // Update last sync time
     await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC, Date.now().toString());
 
+    const successfulActions = actionsToSync.filter((action) => !failedActions.includes(action));
+
     this.syncInProgress = false;
+    if (successfulActions.length > 0) {
+      this.syncCompletedListeners.forEach((listener) => {
+        try {
+          listener(successfulActions);
+        } catch (error) {
+          console.error('Error notifying sync completion listener:', error);
+        }
+      });
+    }
     console.log(`Sync completed. ${failedActions.length} actions failed.`);
   }
 
@@ -597,3 +618,5 @@ export const getUser = (userId: string): Promise<User | null> => offlineService.
 export const syncOfflineActions = (): Promise<void> => offlineService.syncOfflineActions();
 export const getSyncStatus = (): Promise<SyncStatus> => offlineService.getSyncStatus();
 export const getNetworkState = (): Promise<NetworkState> => offlineService.getNetworkState();
+export const onSyncCompleted = (listener: (actions: OfflineAction[]) => void): (() => void) =>
+  offlineService.onSyncCompleted(listener);

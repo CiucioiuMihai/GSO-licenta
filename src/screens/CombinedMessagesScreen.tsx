@@ -32,7 +32,7 @@ import {
   sendMessageWithBotResponse
 } from '@/services/friendsService';
 import { followUser, unfollowUser, getUserDataWithCounts } from '@/services/postsService';
-import { offlineService } from '@/services/offlineService';
+import { offlineService, onSyncCompleted } from '@/services/offlineService';
 import { BOT_USER_ID, BOT_USER, isBotMessage } from '@/services/chatbotService';
 import { setActiveConversationForNotifications } from '@/services/notificationService';
 import { collection, query, where, getDocs, getDoc, doc, orderBy, limit, startAfter, onSnapshot } from 'firebase/firestore';
@@ -93,6 +93,7 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [otherUser, setOtherUser] = useState<User | null>(null);
+  const [messageReloadToken, setMessageReloadToken] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
   const mobileContentBottomSpacing = !useSplitLayout ? 100 : 0;
@@ -243,7 +244,17 @@ const CombinedMessagesScreen: React.FC<CombinedMessagesScreenProps> = ({
       setActiveConversationForNotifications(null);
       unsubscribe();
     };
-  }, [selectedConversation]);
+  }, [selectedConversation, messageReloadToken]);
+
+  useEffect(() => {
+    const unsubscribe = onSyncCompleted((actions) => {
+      if (actions.some((action) => action.type === 'SEND_MESSAGE')) {
+        setMessageReloadToken((currentValue) => currentValue + 1);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   const loadMoreMessages = async () => {
     if (!selectedConversation || isLoadingMoreMessages || !hasMoreMessages || !lastVisibleMessageDoc) {

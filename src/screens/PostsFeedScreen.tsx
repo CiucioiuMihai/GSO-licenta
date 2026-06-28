@@ -41,6 +41,7 @@ import {
 import { createReport } from '@/services/reportService';
 import { auth } from '@/services/firebase';
 import { offlineService } from '@/services/offlineService';
+import { onSyncCompleted } from '@/services/offlineService';
 import { hydrateImagesFromFirestore } from '@/utils/imageUtils';
 import Navbar from '@/components/Navbar';
 import { doc, getDoc } from 'firebase/firestore';
@@ -99,6 +100,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [selectedPostImages, setSelectedPostImages] = useState<any[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [tagFilter, setTagFilter] = useState('');
+  const [appliedTagFilter, setAppliedTagFilter] = useState('');
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
   const [likingPosts, setLikingPosts] = useState<Set<string>>(new Set());
   const [likingComments, setLikingComments] = useState<Set<string>>(new Set());
@@ -110,6 +112,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const [reportingPost, setReportingPost] = useState<(Post & { user: User }) | null>(null);
   const [selectedReportCategory, setSelectedReportCategory] = useState('');
   const [customReportReason, setCustomReportReason] = useState('');
+  const commentsUnsubscribeRef = useRef<(() => void) | null>(null);
   const currentUser = auth.currentUser;
 
   const capHeadPosts = useCallback(<T extends { id: string }>(items: T[]): T[] => {
@@ -140,7 +143,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     let unsubscribe: (() => void) | undefined;
     
     const setupPosts = async () => {
-      if (activeFilter === 'all' || (activeFilter === 'tag' && !tagFilter.trim())) {
+      if (activeFilter === 'all' || (activeFilter === 'tag' && !appliedTagFilter.trim())) {
         // Use paginated fetch for 'all' posts with infinite scroll
         setLoading(true);
         try {
@@ -169,7 +172,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
               fetchedPosts = await getPostsFromFriends(currentUser.uid);
               break;
             case 'tag':
-              fetchedPosts = await getPostsByTagStatic(tagFilter.trim());
+              fetchedPosts = await getPostsByTagStatic(appliedTagFilter.trim());
               break;
           }
           
@@ -190,7 +193,15 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         unsubscribe();
       }
     };
-  }, [currentUser, activeFilter, tagFilter, capHeadPosts]);
+  }, [currentUser, activeFilter, appliedTagFilter, capHeadPosts]);
+
+  const normalizedTagFilter = tagFilter.trim().toLowerCase();
+  const tagSuggestions = normalizedTagFilter.length >= 2
+    ? Array.from(new Set(posts.flatMap((post) => post.tags || [])))
+        .filter((tag) => tag.toLowerCase().startsWith(normalizedTagFilter))
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 6)
+    : [];
 
   // Load more posts for infinite scroll
   const loadMorePosts = useCallback(async () => {
@@ -325,6 +336,14 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         })
       );
       setCommentsWithUsers(commentsWithUserData.filter(c => c.user));
+
+    const refreshCommentsForPost = (postId: string) => {
+      commentsUnsubscribeRef.current?.();
+      setPostComments([]);
+      setCommentsWithUsers([]);
+      setRepliesWithUsers({});
+      commentsUnsubscribeRef.current = loadCommentsForPost(postId);
+    };
       
       // Load replies for each comment
       const repliesData: { [commentId: string]: (Reply & { user: User })[] } = {};
@@ -657,7 +676,13 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
         if (offlineService.isConnected()) {
           await addComment(selectedPost.id, commentText.trim());
         } else {
-          await offlineService.createComment(selectedPost.id, currentUser.uid, commentText.trim());
+          const offlineComment = await offlineService.createComment(selectedPost.id, currentUser.uid, commentText.trim());
+
+          if (currentUserData) {
+            const pendingComment = { ...offlineComment, user: currentUserData };
+            setPostComments((prev) => [offlineComment, ...prev]);
+            setCommentsWithUsers((prev) => [pendingComment, ...prev]);
+          }
         }
         
         // Update the comment count in local state
@@ -692,19 +717,43 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const openComments = (post: Post) => {
     setSelectedPost(post);
     setShowComments(true);
-    const unsubscribe = loadCommentsForPost(post.id);
-    // Store unsubscribe function if needed later
+    commentsUnsubscribeRef.current?.();
+    commentsUnsubscribeRef.current = loadCommentsForPost(post.id);
   };
 
   const closeComments = () => {
     setShowComments(false);
     setSelectedPost(null);
+    commentsUnsubscribeRef.current?.();
+    commentsUnsubscribeRef.current = null;
     setPostComments([]);
     setCommentsWithUsers([]);
     setCommentText('');
     setReplyingTo(null);
     setRepliesWithUsers({});
   };
+
+  useEffect(() => {
+    const unsubscribe = onSyncCompleted((actions) => {
+      const shouldRefreshComments = actions.some((action) => action.type === 'CREATE_COMMENT' || action.type === 'CREATE_REPLY');
+
+      if (shouldRefreshComments && showComments && selectedPost) {
+        setPostComments((prev) => prev.filter((comment) => !comment.id.startsWith('offline_comment_')));
+        setCommentsWithUsers((prev) => prev.filter((comment) => !comment.id.startsWith('offline_comment_')));
+        setRepliesWithUsers((prev) => {
+          const cleanedReplies: { [commentId: string]: (Reply & { user: User })[] } = {};
+
+          Object.entries(prev).forEach(([commentId, replies]) => {
+            cleanedReplies[commentId] = replies.filter((reply) => !reply.id.startsWith('offline_reply_'));
+          });
+
+          return cleanedReplies;
+        });
+      }
+    });
+
+    return unsubscribe;
+  }, [selectedPost, showComments]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -729,24 +778,11 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
     }
   };
 
-  const handleTagSearch = () => {
+  const handleTagSearch = (tagOverride?: string) => {
     // Trigger re-fetch by updating a dummy state or just forcing the useEffect
-    if (activeFilter === 'tag' && tagFilter.trim()) {
-      // The useEffect will automatically trigger when dependencies change
-      // This is just for explicit search button press - we can force it
-      setLoading(true);
-      const fetchTagPosts = async () => {
-        try {
-          const fetchedPosts = await getPostsByTagStatic(tagFilter.trim());
-          setPosts(capHeadPosts(fetchedPosts));
-          setHasNewer(false);
-          loadUsersForPosts(capHeadPosts(fetchedPosts));
-        } catch (error) {
-          console.error('Error fetching posts by tag:', error);
-          setLoading(false);
-        }
-      };
-      fetchTagPosts();
+    const nextTag = (tagOverride ?? tagFilter).trim();
+    if (activeFilter === 'tag' && nextTag) {
+      setAppliedTagFilter(nextTag);
     }
   };
 
@@ -1040,6 +1076,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
   const renderComment = ({ item }: { item: Comment & { user: User } }) => {
     const isLiked = item.likedBy.includes(currentUser?.uid || '');
     const replies = repliesWithUsers[item.id] || [];
+    const isPendingComment = item.id.startsWith('offline_comment_');
     
     return (
       <View>
@@ -1054,6 +1091,7 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
             <View style={styles.commentHeader}>
               <Text style={styles.commentUsername}>{item.user.displayName}</Text>
               <Text style={styles.commentTime}>{formatTime(item.createdAt)}</Text>
+              {isPendingComment && <Text style={styles.pendingSyncCommentText}> • Pending sync</Text>}
             </View>
             <Text style={styles.commentText}>{item.text}</Text>
             <View style={styles.commentActions}>
@@ -1225,12 +1263,28 @@ const PostsFeedScreen: React.FC<PostsFeedScreenProps> = ({
                 placeholderTextColor="#999"
                 value={tagFilter}
                 onChangeText={setTagFilter}
-                onSubmitEditing={handleTagSearch}
+                onSubmitEditing={() => handleTagSearch()}
                 returnKeyType="search"
               />
-              <TouchableOpacity style={styles.tagSearchButton} onPress={handleTagSearch}>
+              <TouchableOpacity style={styles.tagSearchButton} onPress={() => handleTagSearch()}>
                 <Text style={styles.tagSearchButtonText}>🔍</Text>
               </TouchableOpacity>
+            </View>
+          )}
+          {activeFilter === 'tag' && tagSuggestions.length > 0 && (
+            <View style={styles.tagSuggestionsContainer}>
+              {tagSuggestions.map((suggestion) => (
+                <TouchableOpacity
+                  key={suggestion}
+                  style={styles.tagSuggestionButton}
+                  onPress={() => {
+                    setTagFilter(suggestion);
+                    handleTagSearch(suggestion);
+                  }}
+                >
+                  <Text style={styles.tagSuggestionText}>#{suggestion}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           )}
         </View>
@@ -1953,6 +2007,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingTop: 10,
     alignItems: 'center',
+  },
+  tagSuggestionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 15,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  tagSuggestionButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  tagSuggestionText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '600',
   },
   tagInput: {
     flex: 1,
