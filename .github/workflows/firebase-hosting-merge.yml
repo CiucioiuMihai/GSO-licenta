@@ -6,6 +6,16 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'App.tsx'
+      - 'index.js'
+      - 'app.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'firebase.json'
+      - 'src/**'
+      - 'assets/**'
+      - 'public/**'
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
