@@ -20,3 +20,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GSO_GAMIFIED_SOCIAL }}
           channelId: live
           projectId: gso-gamified-social
+          force: true
